@@ -1,0 +1,8 @@
+zeroconf
+PyYAML
+protobuf
+trakt.py
+varint
+srptools
+ed25519
+cryptography
