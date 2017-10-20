@@ -14,6 +14,8 @@ class ControllingRemoteProtocol(ScrobblingRemoteProtocol):
         super().__init__(config)
         self.hid_device_id = None
         self.skip_command_supported = False
+        self.is_dolby_mode = False
+        self.next_up_with_swipe = False
 
     def connection_made(self, transport):
         super().connection_made(transport)
@@ -49,13 +51,11 @@ class ControllingRemoteProtocol(ScrobblingRemoteProtocol):
         button_event.usage = usage
         button_event.buttonDown = True
         self.send(msg)
-        time.sleep(0.005)
         button_event.buttonDown = False
         self.send(msg)
 
     def sendLightTouchEvent(self, x, y):
         self.sendTouchEvent(x, y, 1)
-        time.sleep(0.005)
         self.sendTouchEvent(x, y, 4)
 
     def sendTouchEvent(self, x, y, phase):
@@ -105,24 +105,86 @@ class ControllingRemoteProtocol(ScrobblingRemoteProtocol):
         if self.skip_command_supported:
             self.send_command(CommandInfo_pb2.NextChapter)
 
+    def switchResolution(self):
+        menu = 0x60
+        right = 0x8a
+        select = 0x89
+        down = 0x8d
+        up = 0x8c
+
+        self.sendButton(0xc, menu)
+        time.sleep(1.3)
+        self.sendButton(0xc, menu)
+        time.sleep(.5)
+        self.sendButton(0x1, right)
+        time.sleep(.005)
+        self.sendButton(0x1, right)
+        time.sleep(.005)
+        self.sendButton(0x1, right)
+        time.sleep(.005)
+        self.sendButton(0x1, right)
+        time.sleep(.005)
+        self.sendButton(0x1, select)
+        time.sleep(1.3)
+        self.sendButton(0x1, down)
+        time.sleep(.005)
+        self.sendButton(0x1, down)
+        time.sleep(.005)
+        self.sendButton(0x1, select)
+        time.sleep(.5)
+        self.sendButton(0x1, down)
+        time.sleep(.005)
+        self.sendButton(0x1, select)
+        time.sleep(.5)
+        if self.is_dolby_mode:
+            self.sendButton(0x1, down)
+            time.sleep(.005)
+            self.sendButton(0x1, down)
+            time.sleep(.005)
+            self.is_dolby_mode = False
+        else:
+            self.is_dolby_mode = True
+        self.sendButton(0x1, select)
+        time.sleep(1.3)
+        self.sendButton(0x1, up)
+        time.sleep(.005)
+        self.sendButton(0x1, select)
+        time.sleep(.5)
+        self.sendButton(0xc, menu)
+        time.sleep(.005)
+        self.sendButton(0xc, menu)
+        time.sleep(1.3)
+        self.swipe(500, 500, 500, 0)
+        time.sleep(1)
+        self.sendButton(0x1, select)
+
+    def doUp(self):
+        if self.now_playing_metadata is None and not self.next_up_with_swipe:
+            self.sendButton(0x1, 0x8c)
+        else:
+            self.next_up_with_swipe = False
+            self.swipe(500, 500, 500, 150)
+
 
 tv_protocol = ControllingRemoteProtocol(load_config())
 lastCommand = 0
 loop = asyncio.get_event_loop()
 
+
 def command_handler(client, userdata, message):
     global lastCommand
     if time.time() - lastCommand < 0.2:
         return
-    oldCommandTIme = lastCommand
+    oldCommandTime = lastCommand
     lastCommand = time.time()
 
     action = None
-    if b'23eae8c2' == message.payload:  # 0
+    if b'23eae8c2' == message.payload:    # 0
         action = lambda: tv_protocol.sendLightTouchEvent(500, 500)
     elif b'94f37ee4' == message.payload:  # 1
-        action = lambda: tv_protocol.swipe(500, 500, 500, 250)
+        action = lambda: tv_protocol.doUp()
     elif b'f61d79de' == message.payload:  # 2
+        tv_protocol.next_up_with_swipe = True
         action = lambda: tv_protocol.sendButton(0xc, 0x60)
     elif b'81772f84' == message.payload:  # 3
         action = lambda: tv_protocol.skipBackward()
@@ -130,10 +192,16 @@ def command_handler(client, userdata, message):
         action = lambda: tv_protocol.skipForward()
     elif b'c7695f20' == message.payload:  # 5
         action = lambda: tv_protocol.prevChapter()
-    elif b'8ac8fa2' == message.payload:  # 6
+    elif b'8ac8fa2' == message.payload:   # 6
         action = lambda: tv_protocol.nextChapter()
+    elif b'95d2e7e4' == message.payload:  # 7
+        action = lambda: tv_protocol.switchResolution()
+    elif b'1353935e' == message.payload:  # 8
+        pass
+    elif b'cc7e81c8' == message.payload:  # 9
+        pass
     else:
-        lastCommand = oldCommandTIme
+        lastCommand = oldCommandTime
 
     if action is not None:
         loop.call_soon_threadsafe(action)
