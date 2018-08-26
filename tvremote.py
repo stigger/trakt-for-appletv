@@ -106,7 +106,10 @@ class ControllingRemoteProtocol(ScrobblingRemoteProtocol):
 
     def nextChapter(self):
         if self.skip_command_supported:
-            self.send_command(CommandInfo_pb2.NextChapter)
+            if self.get_title() == 'Parks and Recreation':
+                self.send_command(CommandInfo_pb2.SkipForward, 17)
+            else:
+                self.send_command(CommandInfo_pb2.NextChapter)
 
     def doUp(self):
         if self.now_playing_metadata is None and not self.next_up_with_swipe:
