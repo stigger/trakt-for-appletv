@@ -38,9 +38,10 @@ def launch(tv_protocol):
     sb.join()
 
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(loop.create_connection(lambda: tv_protocol, info.server, info.port))
-    loop.run_forever()
-    loop.close()
+    asyncio.async(loop.create_connection(lambda: tv_protocol, info.server, info.port))
+    if not loop.is_running():
+        loop.run_forever()
+        loop.close()
 
 
 if __name__ == "__main__":
