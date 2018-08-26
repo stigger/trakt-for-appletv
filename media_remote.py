@@ -1,6 +1,8 @@
 import asyncio
 import sys
 import os
+import uuid
+
 import varint
 from pairing import introduce, pairing, setup_keys, verify
 from protobuf_gen import ProtocolMessage_pb2
@@ -79,6 +81,7 @@ class MediaRemoteProtocol(asyncio.Protocol):
         pass
 
     def send(self, msg):
+        msg.identifier = str(uuid.uuid1())
         data = self.encrypt(msg.SerializeToString())
         self.transport.write(varint.encode(len(data)))
         self.transport.write(data)

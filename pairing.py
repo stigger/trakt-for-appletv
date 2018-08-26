@@ -1,3 +1,5 @@
+import uuid
+
 from srptools import SRPContext, SRPClientSession
 from srptools.constants import PRIME_3072, PRIME_3072_GEN
 import varint
@@ -32,6 +34,7 @@ kTLVType_Separator = b'\xff'
 def introduce(socket, config):
     msg = ProtocolMessage_pb2.ProtocolMessage()
     msg.type = ProtocolMessage_pb2.ProtocolMessage.DEVICE_INFO_MESSAGE
+    msg.identifier = str(uuid.uuid1())
     device_info = msg.Extensions[DeviceInfoMessage_pb2.deviceInfoMessage]
     device_info.uniqueIdentifier = config['unique_identifier']
     device_info.name = config['name']
