@@ -14,8 +14,11 @@ class ControllingRemoteProtocol(ScrobblingRemoteProtocol):
         super().__init__(config)
         self.hid_device_id = None
         self.skip_command_supported = False
-        self.is_dolby_mode = False
         self.next_up_with_swipe = False
+
+    def connection_lost(self, exc):
+        super().connection_lost(exc)
+        launch(self)
 
     def connection_made(self, transport):
         super().connection_made(transport)
@@ -105,59 +108,6 @@ class ControllingRemoteProtocol(ScrobblingRemoteProtocol):
         if self.skip_command_supported:
             self.send_command(CommandInfo_pb2.NextChapter)
 
-    def switchResolution(self):
-        menu = 0x60
-        right = 0x8a
-        select = 0x89
-        down = 0x8d
-        up = 0x8c
-
-        self.sendButton(0xc, menu)
-        time.sleep(1.3)
-        self.sendButton(0xc, menu)
-        time.sleep(.5)
-        self.sendButton(0x1, right)
-        time.sleep(.005)
-        self.sendButton(0x1, right)
-        time.sleep(.005)
-        self.sendButton(0x1, right)
-        time.sleep(.005)
-        self.sendButton(0x1, right)
-        time.sleep(.005)
-        self.sendButton(0x1, select)
-        time.sleep(1.3)
-        self.sendButton(0x1, down)
-        time.sleep(.005)
-        self.sendButton(0x1, down)
-        time.sleep(.005)
-        self.sendButton(0x1, select)
-        time.sleep(.5)
-        self.sendButton(0x1, down)
-        time.sleep(.005)
-        self.sendButton(0x1, select)
-        time.sleep(.5)
-        if self.is_dolby_mode:
-            self.sendButton(0x1, down)
-            time.sleep(.005)
-            self.sendButton(0x1, down)
-            time.sleep(.005)
-            self.is_dolby_mode = False
-        else:
-            self.is_dolby_mode = True
-        self.sendButton(0x1, select)
-        time.sleep(1.3)
-        self.sendButton(0x1, up)
-        time.sleep(.005)
-        self.sendButton(0x1, select)
-        time.sleep(.5)
-        self.sendButton(0xc, menu)
-        time.sleep(.005)
-        self.sendButton(0xc, menu)
-        time.sleep(1.3)
-        self.swipe(500, 500, 500, 0)
-        time.sleep(1)
-        self.sendButton(0x1, select)
-
     def doUp(self):
         if self.now_playing_metadata is None and not self.next_up_with_swipe:
             self.sendButton(0x1, 0x8c)
@@ -195,7 +145,7 @@ def command_handler(client, userdata, message):
     elif b'8ac8fa2' == message.payload:   # 6
         action = lambda: tv_protocol.nextChapter()
     elif b'95d2e7e4' == message.payload:  # 7
-        action = lambda: tv_protocol.switchResolution()
+        pass
     elif b'1353935e' == message.payload:  # 8
         pass
     elif b'cc7e81c8' == message.payload:  # 9
