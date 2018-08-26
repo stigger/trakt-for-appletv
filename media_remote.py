@@ -46,6 +46,8 @@ class MediaRemoteProtocol(asyncio.Protocol):
             pairing(socket, self.config['device_info'])
 
         self.output_key, self.input_key = setup_keys(verify(socket, self.config['device_info']))
+        self.output_nonce = 0
+        self.input_nonce = 0
 
         socket.setblocking(False)
         transport.resume_reading()
@@ -53,6 +55,7 @@ class MediaRemoteProtocol(asyncio.Protocol):
         msg = ProtocolMessage_pb2.ProtocolMessage()
         msg.type = ProtocolMessage_pb2.ProtocolMessage.SET_READY_STATE_MESSAGE
         self.send(msg)
+        print("ready!")
 
     def data_received(self, data):
         self.pending_data += data

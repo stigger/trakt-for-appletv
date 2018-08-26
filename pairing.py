@@ -38,8 +38,9 @@ def introduce(socket, config):
     device_info.systemBuildVersion = '13G36'
     device_info.applicationBundleIdentifier = 'gr.stig.appletv-scrobbler'
     device_info.protocolVersion = 1
+    device_info.lastSupportedMessageType = 46
 
-    send(msg.SerializeToString(), socket)
+    send(msg, socket)
     receive(socket)
 
 
@@ -59,7 +60,8 @@ def receive(socket):
     return msg
 
 
-def send(data, socket):
+def send(msg, socket):
+    data = msg.SerializeToString()
     socket.sendall(varint.encode(len(data)))
     socket.send(data)
 
@@ -105,7 +107,7 @@ def pairing(socket, config):
     msg.Extensions[CryptoPairingMessage_pb2.cryptoPairingMessage].status = 0
     msg.Extensions[CryptoPairingMessage_pb2.cryptoPairingMessage].pairingData = tlv_build({kTLVType_Method: b'\x00',
                                                                                            kTLVType_State: b'\x01'})
-    send(msg.SerializeToString(), socket)
+    send(msg, socket)
     msg = receive(socket)
     parsed = tlv_parse(msg.Extensions[CryptoPairingMessage_pb2.cryptoPairingMessage].pairingData)
 
@@ -125,7 +127,7 @@ def pairing(socket, config):
     tlv = tlv_build({kTLVType_State: b'\x03', kTLVType_PublicKey: our_public, kTLVType_Proof: key_proof})
     msg.Extensions[CryptoPairingMessage_pb2.cryptoPairingMessage].pairingData = tlv
 
-    send(msg.SerializeToString(), socket)
+    send(msg, socket)
     msg = receive(socket)
     parsed = tlv_parse(msg.Extensions[CryptoPairingMessage_pb2.cryptoPairingMessage].pairingData)
 
@@ -157,7 +159,7 @@ def pairing(socket, config):
     msg.Extensions[CryptoPairingMessage_pb2.cryptoPairingMessage].status = 0
     msg.Extensions[CryptoPairingMessage_pb2.cryptoPairingMessage].pairingData = tlv_build({kTLVType_State: b'\x05',
                                                                                            kTLVType_EncryptedData: encrypted})
-    send(msg.SerializeToString(), socket)
+    send(msg, socket)
     msg = receive(socket)
     parsed = tlv_parse(msg.Extensions[CryptoPairingMessage_pb2.cryptoPairingMessage].pairingData)
 
@@ -191,7 +193,7 @@ def verify(socket, config):
     msg.Extensions[CryptoPairingMessage_pb2.cryptoPairingMessage].pairingData = tlv_build(
         {kTLVType_PublicKey: randpk.public_key().public_bytes(), kTLVType_State: b'\x01'})
 
-    send(msg.SerializeToString(), socket)
+    send(msg, socket)
     msg = receive(socket)
     parsed = tlv_parse(msg.Extensions[CryptoPairingMessage_pb2.cryptoPairingMessage].pairingData)
 
@@ -221,7 +223,7 @@ def verify(socket, config):
     msg.Extensions[CryptoPairingMessage_pb2.cryptoPairingMessage].status = 0
     msg.Extensions[CryptoPairingMessage_pb2.cryptoPairingMessage].pairingData = tlv_build({kTLVType_State: b'\x03',
                                                                                            kTLVType_EncryptedData: encrypted})
-    send(msg.SerializeToString(), socket)
+    send(msg, socket)
     msg = receive(socket)
     parsed = tlv_parse(msg.Extensions[CryptoPairingMessage_pb2.cryptoPairingMessage].pairingData)
 
