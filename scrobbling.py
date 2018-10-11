@@ -127,17 +127,20 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
         self.handle_tvshows(operation, progress)
 
     def handle_tvshows(self, operation, progress):
-        title = self.now_playing_metadata.seriesName
-        if len(title) == 0:
-            title = self.now_playing_metadata.title
         if self.now_playing_metadata.HasField('seasonNumber'):
             season_number = self.now_playing_metadata.seasonNumber
             episode_number = self.now_playing_metadata.episodeNumber
         else:
             season_number, episode_number = self.get_itunes_title(self.now_playing_metadata.contentIdentifier)
-        operation(show={'title': title},
+        operation(show={'title': self.get_title()},
                   episode={'season': season_number, 'number': episode_number},
                   progress=progress)
+
+    def get_title(self):
+        title = self.now_playing_metadata.seriesName
+        if len(title) == 0:
+            title = self.now_playing_metadata.title
+        return title
 
     def handle_movies(self, operation, progress):
         movie = {}
@@ -160,7 +163,7 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
             season = int(match.group(1))
             episode = int(match.group(2))
         else:
-            season = int(re.match(".*, Season (\d\d?)$", result['collectionName']).group(1))
+            season = int(re.match(".*, Season (\d\d?)( \(Uncensored\))?$", result['collectionName']).group(1))
             episode = int(result['trackNumber'])
         self.config['itunes']['titles'][contentIdentifier] = {'season': season, 'episode': episode}
         yaml.dump(self.config, open('config.yml', 'w'), default_flow_style=False)
