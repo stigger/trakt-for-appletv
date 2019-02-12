@@ -59,6 +59,7 @@ class ControllingRemoteProtocol(ScrobblingRemoteProtocol):
 
     def sendLightTouchEvent(self, x, y):
         self.sendTouchEvent(x, y, 1)
+        time.sleep(.1)
         self.sendTouchEvent(x, y, 4)
 
     def sendTouchEvent(self, x, y, phase):
