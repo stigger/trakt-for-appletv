@@ -137,6 +137,8 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
                   progress=progress)
 
     def get_title(self):
+        if self.now_playing_metadata is None:
+            return None
         title = self.now_playing_metadata.seriesName
         if len(title) == 0:
             title = self.now_playing_metadata.title
