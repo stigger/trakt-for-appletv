@@ -6,3 +6,4 @@ varint
 srptools
 ed25519
 cryptography
+lxml
