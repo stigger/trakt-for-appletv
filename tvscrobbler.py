@@ -38,7 +38,7 @@ def launch(tv_protocol):
     sb.join()
 
     loop = asyncio.get_event_loop()
-    asyncio.async(loop.create_connection(lambda: tv_protocol, info.server, info.port))
+    asyncio.ensure_future(loop.create_connection(lambda: tv_protocol, info.server, info.port))
     if not loop.is_running():
         loop.run_forever()
         loop.close()
