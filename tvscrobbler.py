@@ -3,6 +3,7 @@ from zeroconf import ServiceStateChange, ServiceBrowser, Zeroconf
 from scrobbling import ScrobblingRemoteProtocol
 import yaml
 import uuid
+import socket
 from random import randint
 
 info = None
@@ -38,7 +39,7 @@ def launch(tv_protocol):
     sb.join()
 
     loop = asyncio.get_event_loop()
-    asyncio.ensure_future(loop.create_connection(lambda: tv_protocol, info.server, info.port))
+    asyncio.ensure_future(loop.create_connection(lambda: tv_protocol, socket.inet_ntoa(info.addresses[0]), info.port))
     if not loop.is_running():
         loop.run_forever()
         loop.close()
