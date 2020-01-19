@@ -1,5 +1,2 @@
 device_info:
   name: Trakt Scrobbler
-scrobble_apps:
-- com.apple.TVShows
-- com.apple.TVMovies
