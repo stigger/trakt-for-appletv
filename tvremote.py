@@ -1,4 +1,5 @@
 import asyncio
+import socket
 import threading
 import time
 import paho.mqtt.client as mqtt
@@ -6,7 +7,9 @@ from protobuf_gen import ProtocolMessage_pb2, RegisterHIDDeviceMessage_pb2, Regi
     SendButtonEventMessage_pb2, SendVirtualTouchEventMessage_pb2, SetStateMessage_pb2, CommandInfo_pb2, \
     SendCommandMessage_pb2
 from scrobbling import ScrobblingRemoteProtocol
-from tvscrobbler import launch, load_config
+from tvscrobbler import getInfo, launch, load_config
+from urllib.request import Request, urlopen
+from lxml import etree
 
 
 class ControllingRemoteProtocol(ScrobblingRemoteProtocol):
@@ -103,14 +106,45 @@ class ControllingRemoteProtocol(ScrobblingRemoteProtocol):
 
     def prevChapter(self):
         if self.skip_command_supported:
-            self.send_command(CommandInfo_pb2.PreviousChapter)
+            if self.current_player == 'com.plexapp.plex':
+                self.chapterPlex(False)
+            else:
+                self.send_command(CommandInfo_pb2.PreviousChapter)
 
     def nextChapter(self):
         if self.skip_command_supported:
-            if self.get_title() == 'Parks and Recreation':
-                self.send_command(CommandInfo_pb2.SkipForward, 17)
+            intro_lengths = self.config['intro_lengths']
+            title = self.get_title()
+            if intro_lengths is not None and title in intro_lengths:
+                offset = intro_lengths[title]
+                if offset is not None:
+                    self.send_command(CommandInfo_pb2.SkipForward, offset)
+                    return
+            elif self.current_player == 'com.plexapp.plex':
+                self.chapterPlex(True)
             else:
                 self.send_command(CommandInfo_pb2.NextChapter)
+
+    def chapterPlex(self, forward):
+        res = urlopen(
+            Request('http://' + socket.inet_ntoa(getInfo().addresses[0]) + ':32500/player/timeline/poll?wait=0',
+                    headers={'X-Plex-Target-Client-Identifier': self.config['plex_target_client_identifier'],
+                             'X-Plex-Device-Name': 'trakt', 'X-Plex-Client-Identifier': 'trakt'}))
+        xml = etree.parse(res)
+        tl = xml.xpath("Timeline[@type='video']")[0]
+        time = int(tl.attrib['time'])
+        xml = etree.parse(urlopen(
+            'http://' + tl.attrib['address'] + ':' + tl.attrib['port'] + tl.attrib['key'] + '?includeChapters=1'))
+        chapters = xml.xpath('Video/Chapter')
+        for c in chapters:
+            start = int(c.attrib['startTimeOffset'])
+            end = int(c.attrib['endTimeOffset'])
+            if start < time < end:
+                if forward:
+                    self.send_command(CommandInfo_pb2.SkipForward, (end - time) / 1000)
+                else:
+                    self.send_command(CommandInfo_pb2.SkipBackward, (time - start) / 1000)
+                break
 
     def doUp(self):
         if self.now_playing_metadata is None and not self.next_up_with_swipe:

@@ -34,6 +34,10 @@ def load_config():
     return config
 
 
+def getInfo():
+    return info
+
+
 def launch(tv_protocol):
     sb = ServiceBrowser(Zeroconf(), '_mediaremotetv._tcp.local.', handlers=[on_service_state_change])
     sb.join()
