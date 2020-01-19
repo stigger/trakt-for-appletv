@@ -20,7 +20,8 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
     def __init__(self, config) -> None:
         super().__init__(config)
         self.now_playing_metadata = None
-        self.valid_player = None
+        self.now_playing_info = None
+        self.current_player = None
         self.playback_rate = None
         self.playback_state = None
         self.skip_command_supported = False
@@ -69,23 +70,23 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
             if not self.skip_command_supported and not state_msg.HasField('displayID'):
                 self.stop_scrobbling()
                 self.now_playing_metadata = None
-            if state_msg.displayID in self.app_handlers:
-                self.valid_player = state_msg.displayID
+                self.now_playing_info = None
             else:
-                self.valid_player = None
+                self.now_playing_info = state_msg.nowPlayingInfo
+            self.current_player = state_msg.displayID
         elif msg.type == ProtocolMessage_pb2.ProtocolMessage.TRANSACTION_MESSAGE:
             transaction = ContentItem_pb2.ContentItem()
             transaction.ParseFromString(
                 msg.Extensions[TransactionMessage_pb2.transactionMessage].packets.packets[0].packetData)
             self.now_playing_metadata = transaction.metadata
-            if self.valid_player is not None:
+            if self.current_player in self.app_handlers:
                 self.update_scrobbling()
 
     def post_trakt_update(self, operation, done=None):
         def inner():
             progress = self.now_playing_metadata.elapsedTime * 100 / self.now_playing_metadata.duration
-            if self.valid_player is not None:
-                handler = self.app_handlers[self.valid_player]
+            if self.current_player in self.app_handlers:
+                handler = self.app_handlers[self.current_player]
                 if handler is not None:
                     handler(operation, progress)
                 if done is not None:
@@ -124,6 +125,7 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
         if not self.is_invalid_metadata():
             def done():
                 self.now_playing_metadata = None
+                self.now_playing_info = None
             self.post_trakt_update(Trakt['scrobble'].stop, done)
 
     def handle_tv_app(self, operation, progress):
@@ -140,12 +142,14 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
                   progress=progress)
 
     def get_title(self):
-        if self.now_playing_metadata is None:
-            return None
-        title = self.now_playing_metadata.seriesName
-        if len(title) == 0:
-            title = self.now_playing_metadata.title
-        return title
+        if self.now_playing_metadata is not None:
+            title = self.now_playing_metadata.seriesName
+            if len(title) == 0:
+                title = self.now_playing_metadata.title
+            return title
+        if self.now_playing_info is not None:
+            return self.now_playing_info.artist
+        return None
 
     def handle_movies(self, operation, progress):
         movie = {}
