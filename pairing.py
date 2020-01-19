@@ -179,11 +179,11 @@ def pairing(socket, config):
     pickle.dump({"seed": ltsk.to_seed(),
                  "peer_id": subtlv[kTLVType_Identifier],
                  "peer_public_key": subtlv[kTLVType_PublicKey]},
-                open("pairing.state", "wb"))
+                open("data/pairing.state", "wb"))
 
 
 def verify(socket, config):
-    data = pickle.load(open("pairing.state", "rb"))
+    data = pickle.load(open("data/pairing.state", "rb"))
     ltsk = ed25519.SigningKey(data['seed'])
     peer_id = data['peer_id']
     peer_public_key = ed25519.VerifyingKey(data['peer_public_key'])

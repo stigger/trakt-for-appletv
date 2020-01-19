@@ -44,7 +44,7 @@ class MediaRemoteProtocol(asyncio.Protocol):
 
         introduce(socket, self.config['device_info'])
 
-        if not os.path.exists('pairing.state'):
+        if not os.path.exists('data/pairing.state'):
             pairing(socket, self.config['device_info'])
 
         self.output_key, self.input_key = setup_keys(verify(socket, self.config['device_info']))

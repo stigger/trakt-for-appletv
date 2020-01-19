@@ -38,8 +38,8 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
         self.authenticate_trakt()
 
     def authenticate_trakt(self):
-        if os.path.exists('trakt.auth'):
-            response = pickle.load(open('trakt.auth', 'rb'))
+        if os.path.exists('data/trakt.auth'):
+            response = pickle.load(open('data/trakt.auth', 'rb'))
         else:
             print('Navigate to %s' % Trakt['oauth'].authorize_url('urn:ietf:wg:oauth:2.0:oob'))
             pin = input('Authorization code: ')
@@ -84,9 +84,12 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
     def post_trakt_update(self, operation, done=None):
         def inner():
             progress = self.now_playing_metadata.elapsedTime * 100 / self.now_playing_metadata.duration
-            self.app_handlers[self.valid_player](operation, progress)
-            if done is not None:
-                done()
+            if self.valid_player is not None:
+                handler = self.app_handlers[self.valid_player]
+                if handler is not None:
+                    handler(operation, progress)
+                if done is not None:
+                    done()
         Thread(target=lambda: inner()).start()
 
     def is_invalid_metadata(self):
@@ -168,7 +171,7 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
             season = int(re.match(".*, Season (\d\d?)( \(Uncensored\))?$", result['collectionName']).group(1))
             episode = int(result['trackNumber'])
         self.config['itunes']['titles'][contentIdentifier] = {'season': season, 'episode': episode}
-        yaml.dump(self.config, open('config.yml', 'w'), default_flow_style=False)
+        yaml.dump(self.config, open('data/config.yml', 'w'), default_flow_style=False)
         return season, episode
 
     def handle_netflix(self, operation, progress):
@@ -190,7 +193,7 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
         info = json.loads(xml.xpath('//script')[0].text)
         title = info['name']
         self.config['netflix']['titles'][contentIdentifier] = title
-        yaml.dump(self.config, open('config.yml', 'w'), default_flow_style=False)
+        yaml.dump(self.config, open('data/config.yml', 'w'), default_flow_style=False)
         return title
 
     def handle_amazon(self, operation, progress):
@@ -215,11 +218,11 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
                 season = f['catalog']['seasonNumber']
             elif f['catalog']['type'] == 'SHOW':
                 title = f['catalog']['title'].replace("[OV/OmU]", "").replace("[OV]", "").replace("[Ultra HD]", "")\
-                    .replace("[dt./OV]", "").strip()
+                    .replace("[dt./OV]", "").replace("(4K UHD)", "").strip()
         self.config['amazon']['titles'][contentIdentifier] = {'title': title, 'season': season, 'episode': episode}
-        yaml.dump(self.config, open('config.yml', 'w'), default_flow_style=False)
+        yaml.dump(self.config, open('data/config.yml', 'w'), default_flow_style=False)
         return title, season, episode
 
     @staticmethod
     def on_trakt_token_refreshed(response):
-        pickle.dump(response, open('trakt.auth', 'wb'))
+        pickle.dump(response, open('data/trakt.auth', 'wb'))

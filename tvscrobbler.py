@@ -18,7 +18,7 @@ def on_service_state_change(zeroconf, service_type, name, state_change):
 
 
 def load_config():
-    config = yaml.load(open('config.yml', 'r'))
+    config = yaml.load(open('data/config.yml', 'r'))
 
     changed = False
     if 'unique_identifier' not in config['device_info']:
@@ -30,7 +30,7 @@ def load_config():
                                                                                 randint(0, 255), randint(0, 255))
         changed = True
     if changed:
-        yaml.dump(config, open('config.yml', 'w'), default_flow_style=False)
+        yaml.dump(config, open('data/config.yml', 'w'), default_flow_style=False)
     return config
 
 
