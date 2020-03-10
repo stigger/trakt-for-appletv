@@ -10,4 +10,4 @@ COPY --from=builder /usr/lib/python3.7/site-packages /usr/lib/python3.7/site-pac
 WORKDIR /opt/TVRemote
 USER tvremote
 VOLUME /opt/TVRemote/data
-CMD ["python3", "tvremote.py"]
+CMD ["python3", "tvscrobbler.py"]
