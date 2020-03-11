@@ -31,6 +31,10 @@ def load_config():
         changed = True
     if changed:
         yaml.dump(config, open('data/config.yml', 'w'), default_flow_style=False)
+    if 'netflix' not in config:
+        config['netflix'] = {'titles': {}}
+    if 'amazon' not in config:
+        config['amazon'] = {'titles': {}}
     return config
 
 
