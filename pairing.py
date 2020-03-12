@@ -110,6 +110,7 @@ def pairing(socket, config):
     msg.Extensions[CryptoPairingMessage_pb2.cryptoPairingMessage].status = 0
     msg.Extensions[CryptoPairingMessage_pb2.cryptoPairingMessage].pairingData = tlv_build({kTLVType_Method: b'\x00',
                                                                                            kTLVType_State: b'\x01'})
+    msg.Extensions[CryptoPairingMessage_pb2.cryptoPairingMessage].state = 2
     send(msg, socket)
     msg = receive(socket)
     parsed = tlv_parse(msg.Extensions[CryptoPairingMessage_pb2.cryptoPairingMessage].pairingData)
