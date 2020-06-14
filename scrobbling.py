@@ -3,6 +3,7 @@ import os
 import re
 from threading import Thread
 from urllib.request import urlopen, Request
+from urllib.parse import urlencode
 
 from io import BytesIO
 
@@ -27,6 +28,7 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
         self.skip_command_supported = False
         self.last_elapsed_time = None
         self.last_elapsed_time_timestamp = None
+        self.netflix_titles = {}
         self.app_handlers = {'com.apple.TVShows': self.handle_tvshows,
                              'com.apple.TVWatchList': self.handle_tv_app,
                              'com.apple.TVMovies': self.handle_movies,
@@ -179,26 +181,33 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
         return season, episode
 
     def handle_netflix(self, operation, progress):
-        match = re.match('^S(\d\d?): E(\d\d?) ', self.now_playing_metadata.title)
+        match = re.match('^S(\\d\\d?): E(\\d\\d?) (.*)', self.now_playing_metadata.title)
         if match is not None:
-            title = self.get_netflix_title(self.now_playing_metadata.contentIdentifier)
-            operation(show={'title': title},
-                      episode={'season': match.group(1), 'number': match.group(2)},
-                      progress=progress)
+            title = self.netflix_titles.get(self.now_playing_metadata.title)
+            if not title:
+                if self.now_playing_metadata.contentIdentifier:
+                    title = self.get_netflix_title(self.now_playing_metadata.contentIdentifier)
+                else:
+                    title = self.get_netflix_title_from_duckduckgo(match.group(1), match.group(3))
+                self.netflix_titles[self.now_playing_metadata.title] = title
+            if title:
+                operation(show={'title': title},
+                          episode={'season': match.group(1), 'number': match.group(2)},
+                          progress=progress)
         else:
             operation(movie={'title': self.now_playing_metadata.title}, progress=progress)
 
+    def get_netflix_title_from_duckduckgo(self, season, episode_title):
+        data = urlopen("https://duckduckgo.com/html/?q=" + urlencode(
+            {"q": "Season " + season + " " + episode_title})).read().decode('utf-8')
+        contentIdentifier = re.search('netflix\\.com/(.+/)?title/(\\d+)', data).group(2)
+        return self.get_netflix_title(contentIdentifier)
+
     def get_netflix_title(self, contentIdentifier):
-        known = self.config['netflix']['titles'].get(contentIdentifier)
-        if known:
-            return known
         data = urlopen('https://www.netflix.com/title/' + contentIdentifier).read()
         xml = etree.parse(BytesIO(data), etree.HTMLParser())
         info = json.loads(xml.xpath('//script')[0].text)
-        title = info['name']
-        self.config['netflix']['titles'][contentIdentifier] = title
-        yaml.dump(self.config, open('data/config.yml', 'w'), default_flow_style=False)
-        return title
+        return info['name']
 
     def handle_amazon(self, operation, progress):
         title, season, episode = self.get_amazon_details(self.now_playing_metadata.contentIdentifier)
