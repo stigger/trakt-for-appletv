@@ -198,8 +198,8 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
             operation(movie={'title': self.now_playing_metadata.title}, progress=progress)
 
     def get_netflix_title_from_duckduckgo(self, season, episode_title):
-        data = urlopen("https://duckduckgo.com/html/?q=" + urlencode(
-            {"q": "Season " + season + " " + episode_title})).read().decode('utf-8')
+        data = urlopen("https://duckduckgo.com/html/?" + urlencode(
+            {"q": "site:netflix.com Season " + season + " " + episode_title})).read().decode('utf-8')
         contentIdentifier = re.search('netflix\\.com/(.+/)?title/(\\d+)', data).group(2)
         return self.get_netflix_title(contentIdentifier)
 
