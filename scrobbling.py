@@ -8,7 +8,6 @@ from urllib.error import HTTPError
 from datetime import datetime
 from io import BytesIO
 
-import yaml
 from lxml import etree
 import json
 
@@ -33,6 +32,8 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
         self.last_elapsed_time = None
         self.last_elapsed_time_timestamp = None
         self.netflix_titles = {}
+        self.itunes_titles = {}
+        self.amazon_titles = {}
         self.app_handlers = {'com.apple.TVShows': self.handle_tvshows,
                              'com.apple.TVWatchList': self.handle_tv_app,
                              'com.apple.TVMovies': self.handle_movies,
@@ -189,7 +190,7 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
         operation(movie=movie, progress=progress)
 
     def get_itunes_title(self, contentIdentifier):
-        known = self.config['itunes']['titles'].get(contentIdentifier)
+        known = self.itunes_titles.get(contentIdentifier)
         if known:
             return known['season'], known['episode']
         result = json.loads(urlopen('https://itunes.apple.com/lookup?country=de&id=' + contentIdentifier).read()
@@ -201,8 +202,7 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
         else:
             season = int(re.match(".*, Season (\d\d?)( \(Uncensored\))?$", result['collectionName']).group(1))
             episode = int(result['trackNumber'])
-        self.config['itunes']['titles'][contentIdentifier] = {'season': season, 'episode': episode}
-        yaml.dump(self.config, open('data/config.yml', 'w'), default_flow_style=False)
+        self.itunes_titles[contentIdentifier] = {'season': season, 'episode': episode}
         return season, episode
 
     def handle_netflix(self, operation, progress):
@@ -258,7 +258,7 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
 
     def get_amazon_details(self, contentIdentifier):
         contentIdentifier = contentIdentifier.replace(":DE", "")
-        known = self.config['amazon']['titles'].get(contentIdentifier)
+        known = self.amazon_titles.get(contentIdentifier)
         if known:
             return known['title'], known['season'], known['episode']
         url = self.config['amazon']['get_playback_resources_url'] % contentIdentifier
@@ -273,8 +273,7 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
             elif f['catalog']['type'] == 'SHOW':
                 title = f['catalog']['title'].replace("[OV/OmU]", "").replace("[OV]", "").replace("[Ultra HD]", "")\
                     .replace("[dt./OV]", "").replace("(4K UHD)", "").strip()
-        self.config['amazon']['titles'][contentIdentifier] = {'title': title, 'season': season, 'episode': episode}
-        yaml.dump(self.config, open('data/config.yml', 'w'), default_flow_style=False)
+        self.amazon_titles[contentIdentifier] = {'title': title, 'season': season, 'episode': episode}
         return title, season, episode
 
     def request_now_playing_description(self):
