@@ -4,7 +4,8 @@ import re
 from threading import Thread
 from urllib.request import urlopen, Request
 from urllib.parse import urlencode
-
+from urllib.error import HTTPError
+from datetime import datetime
 from io import BytesIO
 
 import yaml
@@ -14,7 +15,9 @@ import json
 from trakt import Trakt
 from media_remote import MediaRemoteProtocol
 from protobuf_gen import ProtocolMessage_pb2, ClientUpdatesConfigMessage_pb2, SetStateMessage_pb2, ContentItem_pb2, \
-    TransactionMessage_pb2, CommandInfo_pb2
+    TransactionMessage_pb2, CommandInfo_pb2, PlaybackQueueRequestMessage_pb2
+
+cocoa_time = datetime(2001, 1, 1)
 
 
 class ScrobblingRemoteProtocol(MediaRemoteProtocol):
@@ -22,6 +25,7 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
         super().__init__(config)
         self.now_playing_metadata = None
         self.now_playing_info = None
+        self.now_playing_description = None
         self.current_player = None
         self.playback_rate = None
         self.playback_state = None
@@ -69,28 +73,44 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
                 if command.command == CommandInfo_pb2.SkipForward:
                     self.skip_command_supported = True
                     break
-            if not self.skip_command_supported and not state_msg.HasField('displayID'):
+            if not self.skip_command_supported and not state_msg.HasField('displayID') and not state_msg.HasField(
+                    'playbackQueue'):
                 self.stop_scrobbling()
-                self.now_playing_metadata = None
-                self.now_playing_info = None
-            else:
+            elif state_msg.HasField('nowPlayingInfo'):
                 self.now_playing_info = state_msg.nowPlayingInfo
-            self.current_player = state_msg.displayID
+            if state_msg.HasField('displayID'):
+                self.current_player = state_msg.displayID
+            if len(state_msg.playbackQueue.contentItems) > 0:
+                content_item = state_msg.playbackQueue.contentItems[0]
+                if content_item.HasField('info'):
+                    self.now_playing_description = content_item.info
+                    self.update_scrobbling(force=True)
         elif msg.type == ProtocolMessage_pb2.ProtocolMessage.TRANSACTION_MESSAGE:
             transaction = ContentItem_pb2.ContentItem()
             transaction.ParseFromString(
                 msg.Extensions[TransactionMessage_pb2.transactionMessage].packets.packets[0].packetData)
-            self.now_playing_metadata = transaction.metadata
-            if self.current_player in self.app_handlers:
-                self.update_scrobbling()
+            if transaction.HasField('metadata'):
+                self.now_playing_metadata = transaction.metadata
+                if self.current_player in self.app_handlers:
+                    self.update_scrobbling()
 
     def post_trakt_update(self, operation, done=None):
         def inner():
-            progress = self.now_playing_metadata.elapsedTime * 100 / self.now_playing_metadata.duration
+            elapsed_time = self.now_playing_metadata.elapsedTime
+            cur_cocoa_time = (datetime.utcnow() - cocoa_time).total_seconds()
+            if self.now_playing_info:
+                increment = cur_cocoa_time - self.now_playing_info.timestamp
+                if increment > 5:
+                    elapsed_time += increment
+            progress = elapsed_time * 100 / self.now_playing_metadata.duration
             if self.current_player in self.app_handlers:
                 handler = self.app_handlers[self.current_player]
                 if handler is not None:
-                    handler(operation, progress)
+                    try:
+                        # noinspection PyArgumentList
+                        handler(operation, progress)
+                    except ConnectionError:
+                        pass
                 if done is not None:
                     done()
         Thread(target=lambda: inner()).start()
@@ -98,7 +118,7 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
     def is_invalid_metadata(self):
         return self.now_playing_metadata is None or self.now_playing_metadata.duration < 300
 
-    def update_scrobbling(self):
+    def update_scrobbling(self, force=False):
         if self.is_invalid_metadata():
             return
 
@@ -106,7 +126,7 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
             if self.last_elapsed_time is not None:
                 timestampDiff = self.now_playing_metadata.elapsedTimeTimestamp - self.last_elapsed_time_timestamp
                 elapsedDiff = self.now_playing_metadata.elapsedTime - self.last_elapsed_time
-                if abs(timestampDiff - elapsedDiff) > 5:
+                if force or abs(timestampDiff - elapsedDiff) > 5:
                     self.playback_rate = self.now_playing_metadata.playbackRate
                     self.post_trakt_update(Trakt['scrobble'].start)
             self.last_elapsed_time = self.now_playing_metadata.elapsedTime
@@ -124,11 +144,16 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
         self.playback_state = None
         self.last_elapsed_time = None
         self.last_elapsed_time_timestamp = None
+
+        def cleanup():
+            self.now_playing_metadata = None
+            self.now_playing_info = None
+            self.now_playing_description = None
+
         if not self.is_invalid_metadata():
-            def done():
-                self.now_playing_metadata = None
-                self.now_playing_info = None
-            self.post_trakt_update(Trakt['scrobble'].stop, done)
+            self.post_trakt_update(Trakt['scrobble'].stop, cleanup)
+        else:
+            cleanup()
 
     def handle_tv_app(self, operation, progress):
         self.handle_tvshows(operation, progress)
@@ -183,13 +208,16 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
     def handle_netflix(self, operation, progress):
         match = re.match('^S(\\d\\d?): E(\\d\\d?) (.*)', self.now_playing_metadata.title)
         if match is not None:
-            title = self.netflix_titles.get(self.now_playing_metadata.title)
+            key = self.now_playing_metadata.title + str(self.now_playing_metadata.duration)
+            title = self.netflix_titles.get(key)
             if not title:
                 if self.now_playing_metadata.contentIdentifier:
                     title = self.get_netflix_title(self.now_playing_metadata.contentIdentifier)
                 else:
                     title = self.get_netflix_title_from_duckduckgo(match.group(1), match.group(3))
-                self.netflix_titles[self.now_playing_metadata.title] = title
+                    if not title:
+                        return
+                self.netflix_titles[key] = title
             if title:
                 operation(show={'title': title},
                           episode={'season': match.group(1), 'number': match.group(2)},
@@ -198,12 +226,25 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
             operation(movie={'title': self.now_playing_metadata.title}, progress=progress)
 
     def get_netflix_title_from_duckduckgo(self, season, episode_title):
-        data = urlopen("https://duckduckgo.com/html/?" + urlencode(
-            {"q": "site:netflix.com Season " + season + " " + episode_title})).read().decode('utf-8')
-        contentIdentifier = re.search('netflix\\.com/(.+/)?title/(\\d+)', data).group(2)
-        return self.get_netflix_title(contentIdentifier)
+        if not self.now_playing_description:
+            self.request_now_playing_description()
+            return None
+        query = "site:netflix.com Season " + season + " " + episode_title + ' "' + self.now_playing_description + '"'
 
-    def get_netflix_title(self, contentIdentifier):
+        try:
+            data = urlopen("https://duckduckgo.com/html/?" + urlencode({"q": query})).read().decode('utf-8')
+        except HTTPError as e:
+            return None
+
+        match = re.search('netflix\\.com/(.+/)?title/(\\d+)', data)
+        if not match:
+            return None
+        contentIdentifier = match.group(2)
+        title = self.get_netflix_title(contentIdentifier)
+        return title
+
+    @staticmethod
+    def get_netflix_title(contentIdentifier):
         data = urlopen('https://www.netflix.com/title/' + contentIdentifier).read()
         xml = etree.parse(BytesIO(data), etree.HTMLParser())
         info = json.loads(xml.xpath('//script')[0].text)
@@ -235,6 +276,14 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
         self.config['amazon']['titles'][contentIdentifier] = {'title': title, 'season': season, 'episode': episode}
         yaml.dump(self.config, open('data/config.yml', 'w'), default_flow_style=False)
         return title, season, episode
+
+    def request_now_playing_description(self):
+        msg = ProtocolMessage_pb2.ProtocolMessage()
+        msg.type = ProtocolMessage_pb2.ProtocolMessage.PLAYBACK_QUEUE_REQUEST_MESSAGE
+        msg.Extensions[PlaybackQueueRequestMessage_pb2.playbackQueueRequestMessage].location = 0
+        msg.Extensions[PlaybackQueueRequestMessage_pb2.playbackQueueRequestMessage].length = 1
+        msg.Extensions[PlaybackQueueRequestMessage_pb2.playbackQueueRequestMessage].includeInfo = True
+        self.send(msg)
 
     @staticmethod
     def on_trakt_token_refreshed(response):
