@@ -1,4 +1,5 @@
 #!/bin/sh
 
 chown -R tvremote /opt/TVRemote/data
-exec sudo -u tvremote "$@"
+export PYTHONUNBUFFERED=1
+exec sudo -E -u tvremote "$@"
