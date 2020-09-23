@@ -69,10 +69,9 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
 
         if msg.type == ProtocolMessage_pb2.ProtocolMessage.SET_STATE_MESSAGE:
             state_msg = msg.Extensions[SetStateMessage_pb2.setStateMessage]
-            self.skip_command_supported = False
             for command in msg.Extensions[SetStateMessage_pb2.setStateMessage].supportedCommands.supportedCommands:
                 if command.command == CommandInfo_pb2.SkipForward:
-                    self.skip_command_supported = True
+                    self.skip_command_supported = command.enabled
                     break
             if not self.skip_command_supported and not state_msg.HasField('displayID') and not state_msg.HasField(
                     'playbackQueue'):
