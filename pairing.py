@@ -41,7 +41,7 @@ def introduce(socket, config):
     device_info.systemBuildVersion = '13G36'
     device_info.applicationBundleIdentifier = 'gr.stig.appletv-scrobbler'
     device_info.protocolVersion = 1
-    device_info.lastSupportedMessageType = 46
+    device_info.lastSupportedMessageType = 72
 
     send(msg, socket)
     receive(socket)

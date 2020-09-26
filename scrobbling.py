@@ -13,8 +13,8 @@ import json
 
 from trakt import Trakt
 from media_remote import MediaRemoteProtocol
-from protobuf_gen import ProtocolMessage_pb2, ClientUpdatesConfigMessage_pb2, SetStateMessage_pb2, ContentItem_pb2, \
-    TransactionMessage_pb2, CommandInfo_pb2, PlaybackQueueRequestMessage_pb2
+from protobuf_gen import ProtocolMessage_pb2, ClientUpdatesConfigMessage_pb2, SetStateMessage_pb2, \
+    PlaybackQueueRequestMessage_pb2, UpdateContentItemMessage_pb2
 
 cocoa_time = datetime(2001, 1, 1)
 
@@ -23,12 +23,9 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
     def __init__(self, config) -> None:
         super().__init__(config)
         self.now_playing_metadata = None
-        self.now_playing_info = None
         self.now_playing_description = None
         self.current_player = None
         self.playback_rate = None
-        self.playback_state = None
-        self.skip_command_supported = False
         self.last_elapsed_time = None
         self.last_elapsed_time_timestamp = None
         self.netflix_titles = {}
@@ -69,39 +66,31 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
 
         if msg.type == ProtocolMessage_pb2.ProtocolMessage.SET_STATE_MESSAGE:
             state_msg = msg.Extensions[SetStateMessage_pb2.setStateMessage]
-            for command in msg.Extensions[SetStateMessage_pb2.setStateMessage].supportedCommands.supportedCommands:
-                if command.command == CommandInfo_pb2.SkipForward:
-                    self.skip_command_supported = command.enabled
-                    break
-            if not self.skip_command_supported and not state_msg.HasField('displayID') and not state_msg.HasField(
-                    'playbackQueue'):
-                self.stop_scrobbling()
-            elif state_msg.HasField('nowPlayingInfo'):
-                self.now_playing_info = state_msg.nowPlayingInfo
-            if state_msg.HasField('displayID'):
-                self.current_player = state_msg.displayID
+            self.current_player = state_msg.playerPath.client.bundleIdentifier
             if len(state_msg.playbackQueue.contentItems) > 0:
                 content_item = state_msg.playbackQueue.contentItems[0]
                 if content_item.HasField('info'):
                     self.now_playing_description = content_item.info
                     self.update_scrobbling(force=True)
-        elif msg.type == ProtocolMessage_pb2.ProtocolMessage.TRANSACTION_MESSAGE:
-            transaction = ContentItem_pb2.ContentItem()
-            transaction.ParseFromString(
-                msg.Extensions[TransactionMessage_pb2.transactionMessage].packets.packets[0].packetData)
-            if transaction.HasField('metadata'):
-                self.now_playing_metadata = transaction.metadata
-                if self.current_player in self.app_handlers:
+                if content_item.HasField('metadata'):
+                    self.now_playing_metadata = content_item.metadata
                     self.update_scrobbling()
+        elif msg.type == ProtocolMessage_pb2.ProtocolMessage.SET_NOT_PLAYING_PLAYER_MESSAGE:
+            self.stop_scrobbling()
+        elif msg.type == ProtocolMessage_pb2.ProtocolMessage.UPDATE_CONTENT_ITEM_MESSAGE:
+            updateMsg = msg.Extensions[UpdateContentItemMessage_pb2.updateContentItemMessage]
+            content_item = updateMsg.contentItems[0]
+            if content_item.HasField("metadata"):
+                self.now_playing_metadata = content_item.metadata
+                self.update_scrobbling()
 
     def post_trakt_update(self, operation, done=None):
         def inner():
             elapsed_time = self.now_playing_metadata.elapsedTime
             cur_cocoa_time = (datetime.utcnow() - cocoa_time).total_seconds()
-            if self.now_playing_info:
-                increment = cur_cocoa_time - self.now_playing_info.timestamp
-                if increment > 5:
-                    elapsed_time += increment
+            increment = cur_cocoa_time - self.now_playing_metadata.elapsedTimeTimestamp
+            if increment > 5:
+                elapsed_time += increment
             progress = elapsed_time * 100 / self.now_playing_metadata.duration
             if self.current_player in self.app_handlers:
                 handler = self.app_handlers[self.current_player]
@@ -120,6 +109,8 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
 
     def update_scrobbling(self, force=False):
         if self.is_invalid_metadata():
+            return
+        if self.current_player not in self.app_handlers:
             return
 
         if self.now_playing_metadata.playbackRate == 1.0:
@@ -141,14 +132,13 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
 
     def stop_scrobbling(self):
         self.playback_rate = None
-        self.playback_state = None
         self.last_elapsed_time = None
         self.last_elapsed_time_timestamp = None
 
         def cleanup():
             self.now_playing_metadata = None
-            self.now_playing_info = None
             self.now_playing_description = None
+            self.current_player = None
 
         if not self.is_invalid_metadata():
             self.post_trakt_update(Trakt['scrobble'].stop, cleanup)
@@ -163,7 +153,10 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
             season_number = self.now_playing_metadata.seasonNumber
             episode_number = self.now_playing_metadata.episodeNumber
         else:
-            season_number, episode_number = self.get_itunes_title(self.now_playing_metadata.contentIdentifier)
+            info = self.get_itunes_title(self.now_playing_metadata.contentIdentifier)
+            if info is None:
+                return
+            season_number, episode_number = info
         operation(show={'title': self.get_title()},
                   episode={'season': season_number, 'number': episode_number},
                   progress=progress)
@@ -174,8 +167,6 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
             if len(title) == 0:
                 title = self.now_playing_metadata.title
             return title
-        if self.now_playing_info is not None:
-            return self.now_playing_info.artist
         return None
 
     def handle_movies(self, operation, progress):
