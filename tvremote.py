@@ -43,10 +43,9 @@ class ControllingRemoteProtocol(ScrobblingRemoteProtocol):
             super().message_received(msg)
 
             if msg.type == ProtocolMessage_pb2.ProtocolMessage.SET_STATE_MESSAGE:
-                self.skip_command_supported = False
                 for command in msg.Extensions[SetStateMessage_pb2.setStateMessage].supportedCommands.supportedCommands:
                     if command.command == CommandInfo_pb2.SkipForward:
-                        self.skip_command_supported = True
+                        self.skip_command_supported = command.enabled
                         break
 
     def sendButton(self, usagePage, usage):
@@ -62,7 +61,7 @@ class ControllingRemoteProtocol(ScrobblingRemoteProtocol):
 
     def sendLightTouchEvent(self, x, y):
         self.sendTouchEvent(x, y, 1)
-        time.sleep(.1)
+        time.sleep(.15)
         self.sendTouchEvent(x, y, 4)
 
     def sendTouchEvent(self, x, y, phase):
@@ -151,7 +150,7 @@ class ControllingRemoteProtocol(ScrobblingRemoteProtocol):
             self.sendButton(0x1, 0x8c)
         else:
             self.next_up_with_swipe = False
-            self.swipe(500, 500, 500, 150)
+            self.swipe(500, 850, 500, 150)
 
 
 tv_protocol = ControllingRemoteProtocol(load_config())
