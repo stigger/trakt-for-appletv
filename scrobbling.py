@@ -1,6 +1,7 @@
 import pickle
 import os
 import re
+from json.decoder import JSONDecodeError
 from threading import Thread
 from urllib.request import urlopen, Request
 from urllib.parse import urlencode
@@ -89,7 +90,7 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
             elapsed_time = self.now_playing_metadata.elapsedTime
             cur_cocoa_time = (datetime.utcnow() - cocoa_time).total_seconds()
             increment = cur_cocoa_time - self.now_playing_metadata.elapsedTimeTimestamp
-            if increment > 5:
+            if increment > 5 and elapsed_time + increment < self.now_playing_metadata.duration:
                 elapsed_time += increment
             progress = elapsed_time * 100 / self.now_playing_metadata.duration
             if self.current_player in self.app_handlers:
@@ -171,7 +172,7 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
 
     def handle_movies(self, operation, progress):
         movie = {}
-        match = re.search('(.*) \((\d\d\d\d)\)', self.now_playing_metadata.title)
+        match = re.search('(.*) \\((\\d\\d\\d\\d)\\)', self.now_playing_metadata.title)
         if match is None:
             movie['title'] = self.now_playing_metadata.title
         else:
@@ -183,15 +184,22 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
         known = self.itunes_titles.get(contentIdentifier)
         if known:
             return known['season'], known['episode']
-        result = json.loads(urlopen('https://itunes.apple.com/lookup?country=de&id=' + contentIdentifier).read()
-                            .decode('utf-8'))['results'][0]
-        match = re.match("^Season (\d\d?), Episode (\d\d?): ", result['trackName'])
-        if match is not None:
-            season = int(match.group(1))
-            episode = int(match.group(2))
+        result = json.loads(urlopen('https://itunes.apple.com/lookup?country=de&itunesId=' + contentIdentifier).read()
+                            .decode('utf-8'))
+        if result['resultCount'] == 0:
+            result = self.get_apple_tv_plus_info(self.get_title())
+            if not result:
+                return None
+            season, episode = result
         else:
-            season = int(re.match(".*, Season (\d\d?)( \(Uncensored\))?$", result['collectionName']).group(1))
-            episode = int(result['trackNumber'])
+            result = result['results'][0]
+            match = re.match("^Season (\\d\\d?), Episode (\\d\\d?): ", result['trackName'])
+            if match is not None:
+                season = int(match.group(1))
+                episode = int(match.group(2))
+            else:
+                season = int(re.match(".*, Season (\\d\\d?)( \\(Uncensored\\))?$", result['collectionName']).group(1))
+                episode = int(result['trackNumber'])
         self.itunes_titles[contentIdentifier] = {'season': season, 'episode': episode}
         return season, episode
 
@@ -204,7 +212,7 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
                 if self.now_playing_metadata.contentIdentifier:
                     title = self.get_netflix_title(self.now_playing_metadata.contentIdentifier)
                 else:
-                    title = self.get_netflix_title_from_duckduckgo(match.group(1), match.group(3))
+                    title = self.get_netflix_title_from_description(match.group(1), match.group(3))
                     if not title:
                         return
                 self.netflix_titles[key] = title
@@ -215,15 +223,23 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
         else:
             operation(movie={'title': self.now_playing_metadata.title}, progress=progress)
 
-    def get_netflix_title_from_duckduckgo(self, season, episode_title):
+    def search_by_description(self, query):
         if not self.now_playing_description:
             self.request_now_playing_description()
             return None
-        query = "site:netflix.com Season " + season + " " + episode_title + ' "' + self.now_playing_description + '"'
 
+        query += ' "' + self.now_playing_description + '"'
         try:
-            data = urlopen("https://duckduckgo.com/html/?" + urlencode({"q": query})).read().decode('utf-8')
-        except HTTPError as e:
+            return urlopen(Request("https://google.com/search?" + urlencode({"q": query}), headers={
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/605.1.15 '
+                              '(KHTML, like Gecko) Version/14.0 Safari/605.1.15'
+            })).read().decode('utf-8')
+        except HTTPError:
+            return None
+
+    def get_netflix_title_from_description(self, season, episode_title):
+        data = self.search_by_description("site:netflix.com Season " + season + " " + episode_title)
+        if not data:
             return None
 
         match = re.search('netflix\\.com/(.+/)?title/(\\d+)', data)
@@ -232,6 +248,42 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
         contentIdentifier = match.group(2)
         title = self.get_netflix_title(contentIdentifier)
         return title
+
+    def get_apple_tv_plus_info(self, title):
+        data = self.search_by_description("site:tv.apple.com " + title)
+
+        if not data:
+            return None
+
+        match = re.search('(https://tv\\.apple\\.com/../episode/.*?)\"', data)
+        if not match:
+            return None
+
+        try:
+            data = urlopen(match.group(1)).read()
+        except HTTPError:
+            return None
+
+        xml = etree.parse(BytesIO(data), etree.HTMLParser())
+        for script in xml.xpath('//script'):
+            if not script.text:
+                continue
+            try:
+                for d in list(json.loads(script.text).values()):
+                    if type(d) is not str:
+                        continue
+                    try:
+                        d = json.loads(d)
+                        if 'd' in d and 'data' in d['d'] and 'content' in d['d']['data']:
+                            info = d['d']['data']['content']
+                            if 'seasonNumber' in info:
+                                return info['seasonNumber'], info['episodeNumber']
+                    except JSONDecodeError:
+                        continue
+            except JSONDecodeError:
+                continue
+
+        return None
 
     @staticmethod
     def get_netflix_title(contentIdentifier):
