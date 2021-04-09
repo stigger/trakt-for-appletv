@@ -18,7 +18,7 @@ def on_service_state_change(zeroconf, service_type, name, state_change):
 
 
 def load_config():
-    config = yaml.load(open('data/config.yml', 'r'))
+    config = yaml.load(open('data/config.yml', 'r'), Loader=yaml.FullLoader)
 
     changed = False
     if 'unique_identifier' not in config['device_info']:
