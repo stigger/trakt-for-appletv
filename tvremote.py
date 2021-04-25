@@ -166,26 +166,26 @@ def command_handler(client, userdata, message):
     lastCommand = time.time()
 
     action = None
-    if b'23eae8c2' == message.payload:    # 0
+    if b'2070b' == message.payload:    # 0
         action = lambda: tv_protocol.sendLightTouchEvent(500, 500)
-    elif b'94f37ee4' == message.payload:  # 1
+    elif b'20702' == message.payload:  # 1
         action = lambda: tv_protocol.doUp()
-    elif b'f61d79de' == message.payload:  # 2
+    elif b'20703' == message.payload:  # 2
         tv_protocol.next_up_with_swipe = True
         action = lambda: tv_protocol.sendButton(0xc, 0x60)
-    elif b'81772f84' == message.payload:  # 3
+    elif b'20704' == message.payload:  # 3
         action = lambda: tv_protocol.skipBackward()
-    elif b'4d91bbbe' == message.payload:  # 4
+    elif b'20705' == message.payload:  # 4
         action = lambda: tv_protocol.skipForward()
-    elif b'c7695f20' == message.payload:  # 5
+    elif b'20706' == message.payload:  # 5
         action = lambda: tv_protocol.prevChapter()
-    elif b'8ac8fa2' == message.payload:   # 6
+    elif b'20707' == message.payload:   # 6
         action = lambda: tv_protocol.nextChapter()
-    elif b'95d2e7e4' == message.payload:  # 7
+    elif b'20708' == message.payload:  # 7
         pass
-    elif b'1353935e' == message.payload:  # 8
+    elif b'20709' == message.payload:  # 8
         pass
-    elif b'cc7e81c8' == message.payload:  # 9
+    elif b'2070a' == message.payload:  # 9
         pass
     else:
         lastCommand = oldCommandTime
