@@ -255,7 +255,7 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
         if not data:
             return None
 
-        match = re.search('(https://tv\\.apple\\.com/../episode/.*?)\"', data)
+        match = re.search('(https://tv\\.apple\\.com/(../)?episode/.*?)\"', data)
         if not match:
             return None
 
