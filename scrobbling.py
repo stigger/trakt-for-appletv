@@ -230,7 +230,7 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
 
         query += ' "' + self.now_playing_description + '"'
         try:
-            return urlopen(Request("https://google.com/search?" + urlencode({"q": query}), headers={
+            return urlopen(Request("https://bing.com/search?" + urlencode({"q": query}), headers={
                 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/605.1.15 '
                               '(KHTML, like Gecko) Version/14.0 Safari/605.1.15'
             })).read().decode('utf-8')
