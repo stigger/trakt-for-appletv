@@ -67,21 +67,22 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
 
         if msg.type == ProtocolMessage_pb2.ProtocolMessage.SET_STATE_MESSAGE:
             state_msg = msg.Extensions[SetStateMessage_pb2.setStateMessage]
-            self.current_player = state_msg.playerPath.client.bundleIdentifier
+            if state_msg.HasField('playerPath'):
+                self.current_player = state_msg.playerPath.client.bundleIdentifier
             if len(state_msg.playbackQueue.contentItems) > 0:
                 content_item = state_msg.playbackQueue.contentItems[0]
                 if content_item.HasField('info'):
                     self.now_playing_description = content_item.info
                     self.update_scrobbling(force=True)
-                if content_item.HasField('metadata'):
+                if content_item.HasField('metadata') and content_item.metadata.ByteSize() > 0:
                     self.now_playing_metadata = content_item.metadata
                     self.update_scrobbling()
-        elif msg.type == ProtocolMessage_pb2.ProtocolMessage.SET_NOT_PLAYING_PLAYER_MESSAGE:
+        elif msg.type == ProtocolMessage_pb2.ProtocolMessage.REMOVE_PLAYER_MESSAGE:
             self.stop_scrobbling()
         elif msg.type == ProtocolMessage_pb2.ProtocolMessage.UPDATE_CONTENT_ITEM_MESSAGE:
             updateMsg = msg.Extensions[UpdateContentItemMessage_pb2.updateContentItemMessage]
             content_item = updateMsg.contentItems[0]
-            if content_item.HasField("metadata"):
+            if content_item.HasField("metadata") and content_item.metadata.ByteSize() > 0:
                 self.now_playing_metadata = content_item.metadata
                 self.update_scrobbling()
 
