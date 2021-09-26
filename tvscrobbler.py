@@ -1,49 +1,32 @@
 import asyncio
-from zeroconf import ServiceStateChange, ServiceBrowser, Zeroconf
+import pyatv
 from scrobbling import ScrobblingRemoteProtocol
 import yaml
-import uuid
-import socket
-from random import randint
-
-info = None
-
-
-def on_service_state_change(zeroconf, service_type, name, state_change):
-    global info
-    if state_change is ServiceStateChange.Added:
-        zeroconf.remove_all_service_listeners()
-        info = zeroconf.get_service_info(service_type, name)
-        zeroconf.close()
 
 
 def load_config():
-    config = yaml.load(open('data/config.yml', 'r'), Loader=yaml.FullLoader)
-
-    changed = False
-    if 'unique_identifier' not in config['device_info']:
-        config['device_info']['unique_identifier'] = str(uuid.uuid1())
-        changed = True
-    if 'device_id' not in config['device_info']:
-        config['device_info']['device_id'] = "%02x:%02x:%02x:%02x:%02x:%02x" % (randint(0, 255), randint(0, 255),
-                                                                                randint(0, 255), randint(0, 255),
-                                                                                randint(0, 255), randint(0, 255))
-        changed = True
-    if changed:
-        yaml.dump(config, open('data/config.yml', 'w'), default_flow_style=False)
-    return config
+    return yaml.load(open('data/config.yml', 'r'), Loader=yaml.FullLoader)
 
 
-def launch(tv_protocol):
-    sb = ServiceBrowser(Zeroconf(), '_mediaremotetv._tcp.local.', handlers=[on_service_state_change])
-    sb.join()
-
+async def launch(tv_protocol):
     loop = asyncio.get_event_loop()
-    asyncio.ensure_future(loop.create_connection(lambda: tv_protocol, socket.inet_ntoa(info.addresses[0]), info.port))
-    if not loop.is_running():
-        loop.run_forever()
-        loop.close()
+
+    atv_id = None
+    if 'apple_tv_identifier' in tv_protocol.config:
+        atv_id = tv_protocol.config['apple_tv_identifier']
+
+    atvs = await pyatv.scan(loop, identifier=atv_id, protocol=pyatv.Protocol.AirPlay)
+    atv = next(filter(lambda x: x.device_info.operating_system == pyatv.const.OperatingSystem.TvOS, atvs))
+
+    if atv_id != atv.identifier:
+        tv_protocol.config['apple_tv_identifier'] = atv.identifier
+        yaml.dump(tv_protocol.config, open('data/config.yml', 'w'), default_flow_style=False)
+
+    await tv_protocol.connect(atv)
+
+    while True:
+        await asyncio.sleep(3600)
 
 
 if __name__ == "__main__":
-    launch(ScrobblingRemoteProtocol(load_config()))
+    asyncio.run(launch(ScrobblingRemoteProtocol(load_config())))

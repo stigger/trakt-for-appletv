@@ -14,8 +14,8 @@ import json
 
 from trakt import Trakt
 from media_remote import MediaRemoteProtocol
-from protobuf_gen import ProtocolMessage_pb2, ClientUpdatesConfigMessage_pb2, SetStateMessage_pb2, \
-    PlaybackQueueRequestMessage_pb2, UpdateContentItemMessage_pb2
+from pyatv.protocols.mrp.protobuf import ProtocolMessage
+from pyatv.protocols.mrp.messages import create
 
 cocoa_time = datetime(2001, 1, 1)
 
@@ -53,20 +53,16 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
             self.on_trakt_token_refreshed(response)
         Trakt.configuration.defaults.oauth.from_response(response, refresh=True)
 
-    def connection_made(self, transport):
-        super().connection_made(transport)
+    async def connect(self, atv):
+        await super().connect(atv)
+        protocol = self.atv.remote_control.main_instance.protocol
+        protocol.add_listener(self.message_received, ProtocolMessage.SET_STATE_MESSAGE)
+        protocol.add_listener(self.message_received, ProtocolMessage.REMOVE_PLAYER_MESSAGE)
+        protocol.add_listener(self.message_received, ProtocolMessage.UPDATE_CONTENT_ITEM_MESSAGE)
 
-        msg = ProtocolMessage_pb2.ProtocolMessage()
-        msg.type = ProtocolMessage_pb2.ProtocolMessage.CLIENT_UPDATES_CONFIG_MESSAGE
-        msg.Extensions[ClientUpdatesConfigMessage_pb2.clientUpdatesConfigMessage].nowPlayingUpdates = True
-        msg.Extensions[ClientUpdatesConfigMessage_pb2.clientUpdatesConfigMessage].artworkUpdates = True
-        self.send(msg)
-
-    def message_received(self, msg):
-        super().message_received(msg)
-
-        if msg.type == ProtocolMessage_pb2.ProtocolMessage.SET_STATE_MESSAGE:
-            state_msg = msg.Extensions[SetStateMessage_pb2.setStateMessage]
+    async def message_received(self, msg, d):
+        if msg.type == ProtocolMessage.SET_STATE_MESSAGE:
+            state_msg = msg.inner()
             if state_msg.HasField('playerPath'):
                 self.current_player = state_msg.playerPath.client.bundleIdentifier
             if len(state_msg.playbackQueue.contentItems) > 0:
@@ -77,10 +73,10 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
                 if content_item.HasField('metadata') and content_item.metadata.ByteSize() > 0:
                     self.now_playing_metadata = content_item.metadata
                     self.update_scrobbling()
-        elif msg.type == ProtocolMessage_pb2.ProtocolMessage.REMOVE_PLAYER_MESSAGE:
+        elif msg.type == ProtocolMessage.REMOVE_PLAYER_MESSAGE:
             self.stop_scrobbling()
-        elif msg.type == ProtocolMessage_pb2.ProtocolMessage.UPDATE_CONTENT_ITEM_MESSAGE:
-            updateMsg = msg.Extensions[UpdateContentItemMessage_pb2.updateContentItemMessage]
+        elif msg.type == ProtocolMessage.UPDATE_CONTENT_ITEM_MESSAGE:
+            updateMsg = msg.inner()
             content_item = updateMsg.contentItems[0]
             if content_item.HasField("metadata") and content_item.metadata.ByteSize() > 0:
                 self.now_playing_metadata = content_item.metadata
@@ -320,12 +316,12 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
         return title, season, episode
 
     def request_now_playing_description(self):
-        msg = ProtocolMessage_pb2.ProtocolMessage()
-        msg.type = ProtocolMessage_pb2.ProtocolMessage.PLAYBACK_QUEUE_REQUEST_MESSAGE
-        msg.Extensions[PlaybackQueueRequestMessage_pb2.playbackQueueRequestMessage].location = 0
-        msg.Extensions[PlaybackQueueRequestMessage_pb2.playbackQueueRequestMessage].length = 1
-        msg.Extensions[PlaybackQueueRequestMessage_pb2.playbackQueueRequestMessage].includeInfo = True
-        self.send(msg)
+        msg = create(ProtocolMessage.PLAYBACK_QUEUE_REQUEST_MESSAGE)
+        req = msg.inner()
+        req.location = 0
+        req.length = 1
+        req.includeInfo = True
+        self.protocol.send(msg)
 
     @staticmethod
     def on_trakt_token_refreshed(response):
