@@ -53,7 +53,7 @@ class ControllingRemoteProtocol(ScrobblingRemoteProtocol):
 
     async def sendLightTouchEvent(self, x, y):
         await self.sendTouchEvent(x, y, 1)
-        await asyncio.sleep(.15)
+        await asyncio.sleep(.1)
         await self.sendTouchEvent(x, y, 4)
 
     async def sendTouchEvent(self, x, y, phase):
