@@ -1,15 +1,14 @@
 import asyncio
-import socket
 import threading
 import time
 import paho.mqtt.client as mqtt
-from protobuf_gen import ProtocolMessage_pb2, RegisterHIDDeviceMessage_pb2, RegisterHIDDeviceResultMessage_pb2, \
-    SendButtonEventMessage_pb2, SendVirtualTouchEventMessage_pb2, SetStateMessage_pb2, CommandInfo_pb2, \
-    SendCommandMessage_pb2
+from pyatv.protocols.mrp.messages import create
+from pyatv.protocols.mrp.protobuf import ProtocolMessage, SendButtonEventMessage_pb2, CommandInfo_pb2
 from scrobbling import ScrobblingRemoteProtocol
 from tvscrobbler import getInfo, launch, load_config
 from urllib.request import Request, urlopen
 from lxml import etree
+import struct
 
 
 class ControllingRemoteProtocol(ScrobblingRemoteProtocol):
@@ -19,114 +18,102 @@ class ControllingRemoteProtocol(ScrobblingRemoteProtocol):
         self.skip_command_supported = False
         self.next_up_with_swipe = False
 
-    def connection_lost(self, exc):
-        super().connection_lost(exc)
-        launch(self)
+    async def connect(self, atv):
+        await super().connect(atv)
 
-    def connection_made(self, transport):
-        super().connection_made(transport)
-
-        msg = ProtocolMessage_pb2.ProtocolMessage()
-        msg.type = ProtocolMessage_pb2.ProtocolMessage.REGISTER_HID_DEVICE_MESSAGE
-        descriptor = msg.Extensions[RegisterHIDDeviceMessage_pb2.registerHIDDeviceMessage].deviceDescriptor
+        msg = create(ProtocolMessage.REGISTER_HID_DEVICE_MESSAGE)
+        descriptor = msg.inner().deviceDescriptor
         descriptor.screenSizeWidth = 1000
         descriptor.screenSizeHeight = 1000
         descriptor.absolute = False
         descriptor.integratedDisplay = False
-        self.send(msg)
 
-    def message_received(self, msg):
-        if msg.type == ProtocolMessage_pb2.ProtocolMessage.REGISTER_HID_DEVICE_RESULT_MESSAGE:
-            self.hid_device_id = msg.Extensions[
-                RegisterHIDDeviceResultMessage_pb2.registerHIDDeviceResultMessage].deviceIdentifier
-        else:
-            super().message_received(msg)
+        result = await self.protocol.send_and_receive(msg)
+        if result.type == ProtocolMessage.REGISTER_HID_DEVICE_RESULT_MESSAGE:
+            self.hid_device_id = result.inner().deviceIdentifier
 
-            if msg.type == ProtocolMessage_pb2.ProtocolMessage.SET_STATE_MESSAGE:
-                for command in msg.Extensions[SetStateMessage_pb2.setStateMessage].supportedCommands.supportedCommands:
-                    if command.command == CommandInfo_pb2.SkipForward:
-                        self.skip_command_supported = command.enabled
-                        break
+    async def message_received(self, msg, d):
+        await super().message_received(msg, d)
 
-    def sendButton(self, usagePage, usage):
-        msg = ProtocolMessage_pb2.ProtocolMessage()
-        msg.type = ProtocolMessage_pb2.ProtocolMessage.SEND_BUTTON_EVENT
+        if msg.type == ProtocolMessage.SET_STATE_MESSAGE:
+            for command in msg.inner().supportedCommands.supportedCommands:
+                if command.command == CommandInfo_pb2.SkipForward:
+                    self.skip_command_supported = command.enabled
+                    break
+
+    async def sendButton(self, usagePage, usage):
+        msg = create(ProtocolMessage.SEND_BUTTON_EVENT)
         button_event = msg.Extensions[SendButtonEventMessage_pb2.sendButtonEventMessage]
         button_event.usagePage = usagePage
         button_event.usage = usage
         button_event.buttonDown = True
-        self.send(msg)
+        await self.protocol.send(msg)
         button_event.buttonDown = False
-        self.send(msg)
+        await self.protocol.send(msg)
 
-    def sendLightTouchEvent(self, x, y):
-        self.sendTouchEvent(x, y, 1)
-        time.sleep(.15)
-        self.sendTouchEvent(x, y, 4)
+    async def sendLightTouchEvent(self, x, y):
+        await self.sendTouchEvent(x, y, 1)
+        await asyncio.sleep(.15)
+        await self.sendTouchEvent(x, y, 4)
 
-    def sendTouchEvent(self, x, y, phase):
-        msg = ProtocolMessage_pb2.ProtocolMessage()
-        msg.type = ProtocolMessage_pb2.ProtocolMessage.SEND_VIRTUAL_TOUCH_EVENT_MESSAGE
-        touch_event_message = msg.Extensions[SendVirtualTouchEventMessage_pb2.sendVirtualTouchEventMessage]
-        touch_event_message.deviceIdentifier = self.hid_device_id
-        touch_event_message.event.x = x
-        touch_event_message.event.y = y
+    async def sendTouchEvent(self, x, y, phase):
+        msg = create(ProtocolMessage.SEND_PACKED_VIRTUAL_TOUCH_EVENT_MESSAGE)
+        touch_event_message = msg.inner()
         # phases: 0; Unknown, 1; Began, 2; Moved, 3; Stationary, 4; Ended, 5; Canceled
-        touch_event_message.event.phase = phase
-        self.send(msg)
+        touch_event_message.data = struct.pack("<5H", int(x), int(y), phase, self.hid_device_id, 0)
+        await self.protocol.send(msg)
 
-    def swipe(self, x1, y1, x2, y2):
-        self.sendTouchEvent(x1, y1, 1)
+    async def swipe(self, x1, y1, x2, y2):
+        await self.sendTouchEvent(x1, y1, 1)
         deltaX = (x2 - x1) / 15
         deltaY = (y2 - y1) / 15
         for i in range(0, 15):
-            time.sleep(0.005)
+            await asyncio.sleep(0.005)
             x1 += deltaX
             y1 += deltaY
-            self.sendTouchEvent(x1, y1, 2)
-        self.sendTouchEvent(x1, y1, 4)
+            await self.sendTouchEvent(x1, y1, 2)
+        await self.sendTouchEvent(x1, y1, 4)
 
-    def send_command(self, command, skip_interval=None):
-        msg = ProtocolMessage_pb2.ProtocolMessage()
-        msg.type = ProtocolMessage_pb2.ProtocolMessage.SEND_COMMAND_MESSAGE
-        send_command = msg.Extensions[SendCommandMessage_pb2.sendCommandMessage]
+    async def send_command(self, command, skip_interval=None):
+        msg = create(ProtocolMessage.SEND_COMMAND_MESSAGE)
+        send_command = msg.inner()
         send_command.command = command
         if skip_interval is not None:
             send_command.options.skipInterval = skip_interval
-        self.send(msg)
+        await self.protocol.send(msg)
 
-    def skipBackward(self):
+    async def skipBackward(self):
         if self.skip_command_supported:
-            self.send_command(CommandInfo_pb2.SkipBackward, 10)
+            await self.send_command(CommandInfo_pb2.SkipBackward, 10)
 
-    def skipForward(self):
+    async def skipForward(self):
         if self.skip_command_supported:
-            self.send_command(CommandInfo_pb2.SkipForward, 10)
+            await self.send_command(CommandInfo_pb2.SkipForward, 10)
 
-    def prevChapter(self):
+    async def prevChapter(self):
         if self.skip_command_supported:
             if self.current_player == 'com.plexapp.plex':
-                self.chapterPlex(False)
+                await self.chapterPlex(False)
             else:
-                self.send_command(CommandInfo_pb2.PreviousChapter)
+                await self.send_command(CommandInfo_pb2.PreviousChapter)
 
-    def nextChapter(self):
+    async def nextChapter(self):
         if self.skip_command_supported:
             intro_lengths = self.config['intro_lengths']
             title = self.get_title()
             if intro_lengths is not None and title in intro_lengths:
                 offset = intro_lengths[title]
                 if offset is not None:
-                    self.send_command(CommandInfo_pb2.SkipForward, offset)
+                    await self.send_command(CommandInfo_pb2.SkipForward, offset)
                     return
             elif self.current_player == 'com.plexapp.plex':
-                self.chapterPlex(True)
+                await self.chapterPlex(True)
             else:
-                self.send_command(CommandInfo_pb2.NextChapter)
+                await self.send_command(CommandInfo_pb2.NextChapter)
 
-    def chapterPlex(self, forward):
+    async def chapterPlex(self, forward):
         res = urlopen(
-            Request('http://' + socket.inet_ntoa(getInfo().addresses[0]) + ':32500/player/timeline/poll?wait=0',
+            Request('http://' + getInfo().address.compressed + ':32500/player/timeline/poll?wait=0',
                     headers={'X-Plex-Target-Client-Identifier': self.config['plex_target_client_identifier'],
                              'X-Plex-Device-Name': 'trakt', 'X-Plex-Client-Identifier': 'trakt'}))
         xml = etree.parse(res)
@@ -140,17 +127,17 @@ class ControllingRemoteProtocol(ScrobblingRemoteProtocol):
             end = int(c.attrib['endTimeOffset'])
             if start < time < end:
                 if forward:
-                    self.send_command(CommandInfo_pb2.SkipForward, (end - time) / 1000)
+                    await self.send_command(CommandInfo_pb2.SkipForward, (end - time) / 1000)
                 else:
-                    self.send_command(CommandInfo_pb2.SkipBackward, (time - start) / 1000)
+                    await self.send_command(CommandInfo_pb2.SkipBackward, (time - start) / 1000)
                 break
 
-    def doUp(self):
+    async def doUp(self):
         if self.now_playing_metadata is None and not self.next_up_with_swipe:
-            self.sendButton(0x1, 0x8c)
+            await self.sendButton(0x1, 0x8c)
         else:
             self.next_up_with_swipe = False
-            self.swipe(500, 850, 500, 150)
+            await self.swipe(500, 850, 500, 150)
 
 
 tv_protocol = ControllingRemoteProtocol(load_config())
@@ -167,20 +154,20 @@ def command_handler(client, userdata, message):
 
     action = None
     if b'2070b' == message.payload:    # 0
-        action = lambda: tv_protocol.sendLightTouchEvent(500, 500)
+        action = tv_protocol.sendLightTouchEvent(500, 500)
     elif b'20702' == message.payload:  # 1
-        action = lambda: tv_protocol.doUp()
+        action = tv_protocol.doUp()
     elif b'20703' == message.payload:  # 2
         tv_protocol.next_up_with_swipe = True
-        action = lambda: tv_protocol.sendButton(0xc, 0x60)
+        action = tv_protocol.sendButton(0xc, 0x60)
     elif b'20704' == message.payload:  # 3
-        action = lambda: tv_protocol.skipBackward()
+        action = tv_protocol.skipBackward()
     elif b'20705' == message.payload:  # 4
-        action = lambda: tv_protocol.skipForward()
+        action = tv_protocol.skipForward()
     elif b'20706' == message.payload:  # 5
-        action = lambda: tv_protocol.prevChapter()
+        action = tv_protocol.prevChapter()
     elif b'20707' == message.payload:   # 6
-        action = lambda: tv_protocol.nextChapter()
+        action = tv_protocol.nextChapter()
     elif b'20708' == message.payload:  # 7
         pass
     elif b'20709' == message.payload:  # 8
@@ -191,7 +178,7 @@ def command_handler(client, userdata, message):
         lastCommand = oldCommandTime
 
     if action is not None:
-        loop.call_soon_threadsafe(action)
+        asyncio.run_coroutine_threadsafe(action, loop)
 
 
 client = mqtt.Client()
@@ -202,4 +189,10 @@ client.on_message = command_handler
 thread = threading.Thread(target=lambda: client.loop_forever(), daemon=True)
 thread.start()
 
-launch(tv_protocol)
+
+async def _launch():
+    global loop
+    loop = asyncio.get_event_loop()
+    await launch(tv_protocol)
+
+asyncio.run(_launch())
