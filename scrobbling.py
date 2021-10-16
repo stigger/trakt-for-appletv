@@ -1,6 +1,7 @@
 import pickle
 import os
 import re
+import asyncio
 from json.decoder import JSONDecodeError
 from threading import Thread
 from urllib.request import urlopen, Request
@@ -14,7 +15,7 @@ import json
 
 from trakt import Trakt
 from media_remote import MediaRemoteProtocol
-from pyatv.protocols.mrp.protobuf import ProtocolMessage
+from pyatv.protocols.mrp.protobuf import ProtocolMessage, ContentItem_pb2, TransactionMessage_pb2
 from pyatv.protocols.mrp.messages import create
 
 cocoa_time = datetime(2001, 1, 1)
@@ -59,6 +60,7 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
         protocol.add_listener(self.message_received, ProtocolMessage.SET_STATE_MESSAGE)
         protocol.add_listener(self.message_received, ProtocolMessage.REMOVE_PLAYER_MESSAGE)
         protocol.add_listener(self.message_received, ProtocolMessage.UPDATE_CONTENT_ITEM_MESSAGE)
+        protocol.add_listener(self.message_received, ProtocolMessage.TRANSACTION_MESSAGE)
 
     async def message_received(self, msg, d):
         if msg.type == ProtocolMessage.SET_STATE_MESSAGE:
@@ -81,6 +83,13 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
             if content_item.HasField("metadata") and content_item.metadata.ByteSize() > 0:
                 self.now_playing_metadata = content_item.metadata
                 self.update_scrobbling()
+        elif msg.type == ProtocolMessage.TRANSACTION_MESSAGE:
+            transaction = ContentItem_pb2.ContentItem()
+            transaction.ParseFromString(
+                msg.Extensions[TransactionMessage_pb2.transactionMessage].packets.packets[0].packetData)
+            if transaction.HasField('info'):
+                self.now_playing_description = transaction.info
+                self.update_scrobbling(force=True)
 
     def post_trakt_update(self, operation, done=None):
         def inner():
@@ -321,7 +330,7 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
         req.location = 0
         req.length = 1
         req.includeInfo = True
-        self.protocol.send(msg)
+        asyncio.run(self.protocol.send(msg))
 
     @staticmethod
     def on_trakt_token_refreshed(response):
