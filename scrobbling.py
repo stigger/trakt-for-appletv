@@ -15,7 +15,7 @@ import json
 
 from trakt import Trakt
 from media_remote import MediaRemoteProtocol
-from pyatv.protocols.mrp.protobuf import ProtocolMessage, ContentItem_pb2, TransactionMessage_pb2
+from pyatv.protocols.mrp.protobuf import ProtocolMessage, ContentItem_pb2, TransactionMessage_pb2, Common_pb2
 from pyatv.protocols.mrp.messages import create
 
 cocoa_time = datetime(2001, 1, 1)
@@ -27,7 +27,8 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
         self.now_playing_metadata = None
         self.now_playing_description = None
         self.current_player = None
-        self.playback_rate = None
+        self.playback_state = None
+        self.pending_playback_state = None
         self.last_elapsed_time = None
         self.last_elapsed_time_timestamp = None
         self.netflix_titles = {}
@@ -67,22 +68,24 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
             state_msg = msg.inner()
             if state_msg.HasField('playerPath'):
                 self.current_player = state_msg.playerPath.client.bundleIdentifier
+            if state_msg.HasField('playbackState'):
+                prevPlaybackState = self.playback_state
+                if self.is_invalid_metadata():
+                    self.pending_playback_state = state_msg.playbackState
+                else:
+                    self.playback_state = state_msg.playbackState
+                self.update_scrobbling(prevPlaybackState=prevPlaybackState)
             if len(state_msg.playbackQueue.contentItems) > 0:
                 content_item = state_msg.playbackQueue.contentItems[0]
-                if content_item.HasField('info'):
-                    self.now_playing_description = content_item.info
-                    self.update_scrobbling(force=True)
                 if content_item.HasField('metadata') and content_item.metadata.ByteSize() > 0:
-                    self.now_playing_metadata = content_item.metadata
-                    self.update_scrobbling()
+                    self.set_metadata(content_item.metadata)
         elif msg.type == ProtocolMessage.REMOVE_PLAYER_MESSAGE:
             self.stop_scrobbling()
         elif msg.type == ProtocolMessage.UPDATE_CONTENT_ITEM_MESSAGE:
             updateMsg = msg.inner()
             content_item = updateMsg.contentItems[0]
             if content_item.HasField("metadata") and content_item.metadata.ByteSize() > 0:
-                self.now_playing_metadata = content_item.metadata
-                self.update_scrobbling()
+                self.set_metadata(content_item.metadata)
         elif msg.type == ProtocolMessage.TRANSACTION_MESSAGE:
             transaction = ContentItem_pb2.ContentItem()
             transaction.ParseFromString(
@@ -111,34 +114,42 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
                     done()
         Thread(target=lambda: inner()).start()
 
+    def set_metadata(self, metadata):
+        if self.is_invalid_metadata():
+            self.playback_state = self.pending_playback_state
+            prevPlaybackState = Common_pb2.PlaybackState.Stopped
+        else:
+            prevPlaybackState = None
+        self.now_playing_metadata = metadata
+        self.update_scrobbling(prevPlaybackState=prevPlaybackState)
+
     def is_invalid_metadata(self):
         return self.now_playing_metadata is None or self.now_playing_metadata.duration < 300
 
-    def update_scrobbling(self, force=False):
+    def update_scrobbling(self, force=False, prevPlaybackState=None):
         if self.is_invalid_metadata():
             return
         if self.current_player not in self.app_handlers:
             return
 
-        if self.now_playing_metadata.playbackRate == 1.0:
+        if self.playback_state == Common_pb2.PlaybackState.Playing:
             if self.last_elapsed_time is not None:
                 timestampDiff = self.now_playing_metadata.elapsedTimeTimestamp - self.last_elapsed_time_timestamp
                 elapsedDiff = self.now_playing_metadata.elapsedTime - self.last_elapsed_time
                 if force or abs(timestampDiff - elapsedDiff) > 5:
-                    self.playback_rate = self.now_playing_metadata.playbackRate
                     self.post_trakt_update(Trakt['scrobble'].start)
             self.last_elapsed_time = self.now_playing_metadata.elapsedTime
             self.last_elapsed_time_timestamp = self.now_playing_metadata.elapsedTimeTimestamp
 
-        if self.now_playing_metadata.playbackRate != self.playback_rate:
-            if self.now_playing_metadata.playbackRate == 0.0 and self.playback_rate is not None:
+        if prevPlaybackState != self.playback_state and prevPlaybackState is not None:
+            if self.playback_state == Common_pb2.PlaybackState.Paused:
                 self.post_trakt_update(Trakt['scrobble'].pause)
-            elif self.now_playing_metadata.playbackRate == 1.0:
+            elif self.playback_state == Common_pb2.PlaybackState.Playing:
                 self.post_trakt_update(Trakt['scrobble'].start)
-            self.playback_rate = self.now_playing_metadata.playbackRate
 
     def stop_scrobbling(self):
-        self.playback_rate = None
+        self.playback_state = None
+        self.pending_playback_state = None
         self.last_elapsed_time = None
         self.last_elapsed_time_timestamp = None
 
