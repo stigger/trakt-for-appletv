@@ -35,6 +35,10 @@ jobs:
         name: Conditional(Set tag as `latest`)
         run: echo "tag=volschin/trakt-for-appletv:latest" >> $GITHUB_ENV
 
+      - if: github.ref == 'refs/heads/dev'
+        name: Conditional(Set tag as `dev`)
+        run: echo "tag=volschin/trakt-for-appletv:dev" >> $GITHUB_ENV
+
       - if: startsWith(github.ref, 'refs/tags/')
         name: Conditional(Set tag as `{version}`)
         run: echo "tag=volschin/trakt-for-appletv:${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
@@ -53,4 +57,4 @@ jobs:
       - name: Scan image for vulnerabilities 
         uses: azure/container-scan@v0
         with:
-          image-name: volschin/trakt-for-appletv:latest
+          image-name: volschin/trakt-for-appletv:${{ env.tag }}
