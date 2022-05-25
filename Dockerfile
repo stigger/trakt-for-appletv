@@ -12,5 +12,5 @@ COPY --from=builder /usr/lib/python3.9/site-packages /usr/lib/python3.9/site-pac
 WORKDIR /opt/TVRemote
 VOLUME /opt/TVRemote/data
 COPY entrypoint.sh /entrypoint.sh
-ENTRYPOINT ["/bin/sh", "entrypoint.sh"]
+#ENTRYPOINT ["/bin/sh", "entrypoint.sh"]
 CMD ["python3", "main.py"]
