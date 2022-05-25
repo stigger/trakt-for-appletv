@@ -1,1 +1,10 @@
-{}
+amazon:
+  enabled: false
+  cookie: null
+  get_playback_resources_url: null
+apple_tv:
+  id: null
+  name: null
+logging:
+  level: info
+  file: null

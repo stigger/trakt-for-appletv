@@ -1,4 +1,11 @@
-PyYAML
-trakt.py
-lxml
 pyatv
+pytz
+requests
+python-dateutil
+protobuf
+aiohttp
+cchardet
+aiodns
+PyYAML
+lxml
+async_retrying

@@ -1,0 +1,7 @@
+/data/trakt.auth
+.idea
+/venv-3.9/
+/venv2/
+/data/config.yml
+/data/pairing.state
+/venv/
