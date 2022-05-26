@@ -9,7 +9,7 @@ Movies apps, as well as Netflix and Amazon Prime.
 Usage:
 ```
 $ pip install -r requirements.txt
-$ python main.py 
+$ python3 main.py 
 ```
 
 ## Amazon Prime configuration
