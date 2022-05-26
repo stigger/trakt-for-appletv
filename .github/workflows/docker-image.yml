@@ -57,4 +57,4 @@ jobs:
       - name: Scan image for vulnerabilities 
         uses: azure/container-scan@v0
         with:
-          image-name: volschin/trakt-for-appletv:${{ env.tag }}
+          image-name: ${{ env.tag }}
