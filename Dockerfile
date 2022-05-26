@@ -4,11 +4,11 @@ RUN apk add --no-cache py3-aiohttp py3-cryptography py3-multidict py3-yarl py3-l
 
 FROM alpine:3.15
 COPY . /opt/TVRemote
-RUN apk add --no-cache py3-aiohttp py3-cryptography py3-multidict py3-yarl py3-lxml py3-paho-mqtt py3-yaml py3-netifaces sudo &&\
+RUN apk add --no-cache py3-aiohttp py3-cryptography py3-multidict py3-yarl py3-lxml py3-paho-mqtt py3-yaml py3-netifaces &&\
    adduser -D -S -h /opt/TVRemote -s /sbin/nologin tvremote
 COPY --from=builder /usr/lib/python3.9/site-packages /usr/lib/python3.9/site-packages
-# Tell docker that all future commands should run as the appuser user
-#USER tvremote
+# Tell docker that all future commands should run as the tvremote user
+USER tvremote
 WORKDIR /opt/TVRemote
 VOLUME /opt/TVRemote/data
 COPY entrypoint.sh /entrypoint.sh
