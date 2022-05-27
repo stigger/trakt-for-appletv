@@ -10,7 +10,8 @@ RUN apk add --no-cache python3-dev build-base py3-wheel py3-pip; \
 
 FROM tvbase AS prod
 COPY --from=builder /usr/lib/python3.10/site-packages /usr/lib/python3.10/site-packages
-RUN adduser -D -S -h /opt/TVRemote -s /sbin/nologin tvremote
+# Create a group and user
+RUN addgroup -S tvgrp && adduser -D -S -h /opt/TVRemote -s /sbin/nologin tvremote -G tvgrp
 # Tell docker that all future commands should run as the tvremote user
 USER tvremote
 COPY . /opt/TVRemote
