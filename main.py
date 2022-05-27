@@ -33,7 +33,7 @@ async def _play_handler():
 
 def main():
     """Application start here."""
-    loop = asyncio.get_event_loop()
+    loop = asyncio.new_event_loop()
     main_task = loop.create_task(
         _play_handler()
     )
