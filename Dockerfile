@@ -5,7 +5,7 @@ RUN apk add --no-cache py3-aiohttp py3-cryptography py3-multidict py3-yarl py3-l
 
 FROM tvbase AS builder
 COPY . /opt/TVRemote
-RUN apk add --no-cache python3-dev build-base py3-wheel py3-pip; 
+RUN apk add --no-cache python3-dev build-base py3-wheel py3-pip; \
     pip3 install -r /opt/TVRemote/requirements.txt
 
 FROM tvbase AS prod
