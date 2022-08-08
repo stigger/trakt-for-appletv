@@ -259,7 +259,7 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
         if not data:
             return None
 
-        match = re.search('netflix\\.com/(.+/)?title/(\\d+)', data)
+        match = re.search('netflix\\.com/(.+?/)?title/(\\d+)', data)
         if not match:
             return None
         contentIdentifier = match.group(2)
