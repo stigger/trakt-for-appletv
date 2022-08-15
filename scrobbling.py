@@ -3,6 +3,7 @@ import pickle
 import os
 import re
 import asyncio
+import time
 from json.decoder import JSONDecodeError
 from threading import Thread
 from urllib.request import urlopen, Request
@@ -32,6 +33,7 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
         self.pending_playback_state = None
         self.last_elapsed_time = None
         self.last_elapsed_time_timestamp = None
+        self.last_trakt_request_timestamp = 0
         self.netflix_titles = {}
         self.itunes_titles = {}
         self.amazon_titles = {}
@@ -90,6 +92,13 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
 
     def post_trakt_update(self, operation, done=None):
         def inner():
+            cur_timestamp = time.time()
+            wait = self.last_trakt_request_timestamp + 1 - cur_timestamp
+            self.last_trakt_request_timestamp = cur_timestamp
+            if wait > 0:
+                self.last_trakt_request_timestamp += wait
+                time.sleep(wait)
+
             elapsed_time = self.now_playing_metadata.elapsedTime
             cur_cocoa_time = (datetime.utcnow() - cocoa_time).total_seconds()
             increment = cur_cocoa_time - self.now_playing_metadata.elapsedTimeTimestamp
