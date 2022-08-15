@@ -15,7 +15,7 @@ import json
 
 from trakt import Trakt
 from media_remote import MediaRemoteProtocol
-from pyatv.protocols.mrp.protobuf import ProtocolMessage, ContentItem_pb2, TransactionMessage_pb2, Common_pb2
+from pyatv.protocols.mrp.protobuf import ProtocolMessage, Common_pb2
 from pyatv.protocols.mrp.messages import create
 
 cocoa_time = datetime(2001, 1, 1)
@@ -86,13 +86,6 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
             content_item = updateMsg.contentItems[0]
             if content_item.HasField("metadata") and content_item.metadata.ByteSize() > 0:
                 self.set_metadata(content_item.metadata)
-        elif msg.type == ProtocolMessage.TRANSACTION_MESSAGE:
-            transaction = ContentItem_pb2.ContentItem()
-            transaction.ParseFromString(
-                msg.Extensions[TransactionMessage_pb2.transactionMessage].packets.packets[0].packetData)
-            if transaction.HasField('info'):
-                self.now_playing_description = transaction.info
-                self.update_scrobbling(force=True)
 
     def post_trakt_update(self, operation, done=None):
         def inner():
@@ -126,7 +119,7 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
     def is_invalid_metadata(self):
         return self.now_playing_metadata is None or self.now_playing_metadata.duration < 300
 
-    def update_scrobbling(self, force=False, prevPlaybackState=None):
+    def update_scrobbling(self, prevPlaybackState=None):
         if self.is_invalid_metadata():
             return
         if self.current_player not in self.app_handlers:
@@ -136,7 +129,7 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
             if self.last_elapsed_time is not None:
                 timestampDiff = self.now_playing_metadata.elapsedTimeTimestamp - self.last_elapsed_time_timestamp
                 elapsedDiff = self.now_playing_metadata.elapsedTime - self.last_elapsed_time
-                if force or abs(timestampDiff - elapsedDiff) > 5:
+                if abs(timestampDiff - elapsedDiff) > 5:
                     self.post_trakt_update(Trakt['scrobble'].start)
             self.last_elapsed_time = self.now_playing_metadata.elapsedTime
             self.last_elapsed_time_timestamp = self.now_playing_metadata.elapsedTimeTimestamp
@@ -243,7 +236,6 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
     def search_by_description(self, query):
         if not self.now_playing_description:
             self.request_now_playing_description()
-            return None
 
         query += ' "' + self.now_playing_description + '"'
         try:
@@ -341,7 +333,8 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
         req.location = 0
         req.length = 1
         req.includeInfo = True
-        asyncio.run(self.protocol.send(msg))
+        resp = asyncio.run(self.protocol.send_and_receive(msg))
+        self.now_playing_description = resp.inner().playbackQueue.contentItems[0].info
 
     @staticmethod
     def on_trakt_token_refreshed(response):
