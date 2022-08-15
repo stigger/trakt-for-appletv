@@ -1,3 +1,4 @@
+import copy
 import pickle
 import os
 import re
@@ -113,11 +114,12 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
             prevPlaybackState = Common_pb2.PlaybackState.Stopped
         else:
             prevPlaybackState = None
-        self.now_playing_metadata = metadata
+        self.now_playing_metadata = copy.copy(metadata)
         self.update_scrobbling(prevPlaybackState=prevPlaybackState)
 
     def is_invalid_metadata(self):
-        return self.now_playing_metadata is None or self.now_playing_metadata.duration < 300
+        return self.now_playing_metadata is None or self.now_playing_metadata.duration < 300 or len(
+            self.now_playing_metadata.title) == 0
 
     def update_scrobbling(self, prevPlaybackState=None):
         if self.is_invalid_metadata():
