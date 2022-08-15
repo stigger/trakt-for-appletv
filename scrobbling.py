@@ -233,7 +233,7 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
                 if self.now_playing_metadata.contentIdentifier:
                     title = self.get_netflix_title(self.now_playing_metadata.contentIdentifier)
                 else:
-                    title = self.get_netflix_title_from_description(match.group(1), match.group(3))
+                    title = self.get_netflix_title_from_description(match.group(3))
                     if not title:
                         return
                 self.netflix_titles[key] = title
@@ -257,8 +257,8 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
         except HTTPError:
             return None
 
-    def get_netflix_title_from_description(self, season, episode_title):
-        data = self.search_by_description("site:netflix.com Season " + season + " " + episode_title)
+    def get_netflix_title_from_description(self, episode_title):
+        data = self.search_by_description("site:netflix.com " + episode_title)
         if not data:
             return None
 
