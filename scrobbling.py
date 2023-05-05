@@ -82,6 +82,9 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
                 content_item = state_msg.playbackQueue.contentItems[0]
                 if content_item.HasField('metadata') and content_item.metadata.ByteSize() > 0:
                     self.set_metadata(content_item.metadata)
+            elif state_msg.HasField('playbackQueue'):
+                # Amazon Prime doesn't remove player, only pauses the playback
+                self.stop_scrobbling()
         elif msg.type == ProtocolMessage.REMOVE_PLAYER_MESSAGE:
             self.stop_scrobbling()
         elif msg.type == ProtocolMessage.UPDATE_CONTENT_ITEM_MESSAGE:
