@@ -1,4 +1,4 @@
 PyYAML
 trakt.py
 lxml
-pyatv==0.9.1
+pyatv

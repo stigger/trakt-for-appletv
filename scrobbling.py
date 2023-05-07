@@ -61,12 +61,13 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
     async def connect(self, atv):
         await super().connect(atv)
         protocol = self.atv.remote_control.main_instance.protocol
-        protocol.add_listener(self.message_received, ProtocolMessage.SET_STATE_MESSAGE)
-        protocol.add_listener(self.message_received, ProtocolMessage.REMOVE_PLAYER_MESSAGE)
-        protocol.add_listener(self.message_received, ProtocolMessage.UPDATE_CONTENT_ITEM_MESSAGE)
-        protocol.add_listener(self.message_received, ProtocolMessage.TRANSACTION_MESSAGE)
+        protocol.listen_to(ProtocolMessage.SET_STATE_MESSAGE, self.message_received)
+        protocol.listen_to(ProtocolMessage.REMOVE_PLAYER_MESSAGE, self.message_received)
+        protocol.listen_to(ProtocolMessage.UPDATE_CONTENT_ITEM_MESSAGE, self.message_received)
+        protocol.listen_to(ProtocolMessage.TRANSACTION_MESSAGE, self.message_received)
+        protocol.listen_to(ProtocolMessage.DEVICE_INFO_MESSAGE, self.message_received)
 
-    async def message_received(self, msg, d):
+    async def message_received(self, msg):
         if msg.type == ProtocolMessage.SET_STATE_MESSAGE:
             state_msg = msg.inner()
             if state_msg.HasField('playerPath'):
