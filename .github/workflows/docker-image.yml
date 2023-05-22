@@ -54,8 +54,17 @@ jobs:
           tags: |
             ${{ env.tag }}
             
-      - name: Scan image for vulnerabilities 
+      - 
+        name: Scan image for vulnerabilities 
         uses: crazy-max/ghaction-container-scan@v2
         with:
           image: ${{ env.tag }}
+          dockerfile: ./Dockerfile
           annotations: true
+          
+      -
+        name: Upload SARIF file
+        if: ${{ steps.scan.outputs.sarif != '' }}
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: ${{ steps.scan.outputs.sarif }}
