@@ -70,3 +70,6 @@ jobs:
 
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v2
+      
+    - name: Upload sarif
+      uses: github/codeql-action/upload-sarif@v2
