@@ -55,6 +55,7 @@ jobs:
             ${{ env.tag }}
             
       - name: Scan image for vulnerabilities 
-        uses: azure/container-scan@v0
+        uses: crazy-max/ghaction-container-scan@v2
         with:
-          image-name: ${{ env.tag }}
+          image: ${{ env.tag }}
+          annotations: true
