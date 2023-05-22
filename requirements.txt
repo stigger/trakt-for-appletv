@@ -1,5 +1,6 @@
 pyatv
 pytz
+pytrakt
 requests
 python-dateutil
 protobuf
