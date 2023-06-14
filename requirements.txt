@@ -5,7 +5,7 @@ requests
 python-dateutil
 protobuf
 aiohttp
-cchardet
+faust-cchardet
 aiodns
 PyYAML
 lxml
