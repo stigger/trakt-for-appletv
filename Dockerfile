@@ -1,4 +1,4 @@
-FROM alpine:3.17 AS tvbase
+FROM alpine:3.18 AS tvbase
 RUN apk add --no-cache ca-certificates py3-aiohttp py3-cryptography py3-multidict py3-yarl py3-lxml py3-paho-mqtt \
         py3-yaml py3-tz py3-requests py3-dateutil py3-mutagen py3-protobuf py3-ifaddr py3-mediafile \
         py3-zeroconf py3-netifaces
