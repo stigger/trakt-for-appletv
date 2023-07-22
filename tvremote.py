@@ -153,26 +153,26 @@ def command_handler(client, userdata, message):
     lastCommand = time.time()
 
     action = None
-    if b'2070b' == message.payload:    # 0
+    if b'20b' == message.payload:    # 0
         action = tv_protocol.sendLightTouchEvent(500, 500)
-    elif b'20702' == message.payload:  # 1
+    elif b'202' == message.payload:  # 1
         action = tv_protocol.doUp()
-    elif b'20703' == message.payload:  # 2
+    elif b'203' == message.payload:  # 2
         tv_protocol.next_up_with_swipe = True
         action = tv_protocol.sendButton(0xc, 0x60)
-    elif b'20704' == message.payload:  # 3
+    elif b'204' == message.payload:  # 3
         action = tv_protocol.skipBackward()
-    elif b'20705' == message.payload:  # 4
+    elif b'205' == message.payload:  # 4
         action = tv_protocol.skipForward()
-    elif b'20706' == message.payload:  # 5
+    elif b'206' == message.payload:  # 5
         action = tv_protocol.prevChapter()
-    elif b'20707' == message.payload:   # 6
+    elif b'207' == message.payload:   # 6
         action = tv_protocol.nextChapter()
-    elif b'20708' == message.payload:  # 7
+    elif b'208' == message.payload:  # 7
         pass
-    elif b'20709' == message.payload:  # 8
+    elif b'209' == message.payload:  # 8
         pass
-    elif b'2070a' == message.payload:  # 9
+    elif b'20a' == message.payload:  # 9
         pass
     else:
         lastCommand = oldCommandTime
