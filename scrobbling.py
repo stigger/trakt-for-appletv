@@ -95,6 +95,9 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
                 self.set_metadata(content_item.metadata)
 
     def post_trakt_update(self, operation, done=None):
+        if self.is_invalid_metadata():
+            return
+
         def inner():
             cur_timestamp = time.time()
             wait = self.last_trakt_request_timestamp + 1 - cur_timestamp
