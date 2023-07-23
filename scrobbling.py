@@ -212,7 +212,7 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
         known = self.itunes_titles.get(contentIdentifier)
         if known:
             return known['season'], known['episode']
-        result = json.loads(urlopen('https://itunes.apple.com/lookup?country=de&itunesId=' + contentIdentifier).read()
+        result = json.loads(urlopen('https://itunes.apple.com/lookup?country=de&id=' + contentIdentifier).read()
                             .decode('utf-8'))
         if result['resultCount'] == 0:
             result = self.get_apple_tv_plus_info(self.get_title())
