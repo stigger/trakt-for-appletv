@@ -61,14 +61,19 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
     async def connect(self, atv):
         await super().connect(atv)
         protocol = self.atv.remote_control.main_instance.protocol
+        protocol.listen_to(ProtocolMessage.SET_NOW_PLAYING_CLIENT_MESSAGE, self.message_received)
         protocol.listen_to(ProtocolMessage.SET_STATE_MESSAGE, self.message_received)
+        protocol.listen_to(ProtocolMessage.UPDATE_PLAYER_MESSAGE, self.message_received)
         protocol.listen_to(ProtocolMessage.REMOVE_PLAYER_MESSAGE, self.message_received)
         protocol.listen_to(ProtocolMessage.UPDATE_CONTENT_ITEM_MESSAGE, self.message_received)
         protocol.listen_to(ProtocolMessage.TRANSACTION_MESSAGE, self.message_received)
-        protocol.listen_to(ProtocolMessage.DEVICE_INFO_MESSAGE, self.message_received)
 
     async def message_received(self, msg):
-        if msg.type == ProtocolMessage.SET_STATE_MESSAGE:
+        if msg.type == ProtocolMessage.SET_NOW_PLAYING_CLIENT_MESSAGE:
+            self.stop_scrobbling()
+        elif msg.type == ProtocolMessage.UPDATE_PLAYER_MESSAGE:
+            asyncio.create_task(self.request_now_playing_description())
+        elif msg.type == ProtocolMessage.SET_STATE_MESSAGE:
             state_msg = msg.inner()
             if state_msg.HasField('playerPath'):
                 self.current_player = state_msg.playerPath.client.bundleIdentifier
@@ -97,27 +102,35 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
     def post_trakt_update(self, operation, done=None):
         if self.is_invalid_metadata():
             return
+        metadata = self.now_playing_metadata
 
         def inner():
             cur_timestamp = time.time()
-            wait = self.last_trakt_request_timestamp + 1 - cur_timestamp
+            wait = self.last_trakt_request_timestamp + 1.5 - cur_timestamp
             self.last_trakt_request_timestamp = cur_timestamp
+            operation_to_call = operation
             if wait > 0:
                 self.last_trakt_request_timestamp += wait
-                time.sleep(wait)
 
-            elapsed_time = self.now_playing_metadata.elapsedTime
+                def f(**kwargs):
+                    time.sleep(wait)
+                    if self.is_invalid_metadata():
+                        return
+                    operation(**kwargs)
+                operation_to_call = f
+
+            elapsed_time = metadata.elapsedTime
             cur_cocoa_time = (datetime.utcnow() - cocoa_time).total_seconds()
-            increment = cur_cocoa_time - self.now_playing_metadata.elapsedTimeTimestamp
-            if increment > 5 and elapsed_time + increment < self.now_playing_metadata.duration:
+            increment = cur_cocoa_time - metadata.elapsedTimeTimestamp
+            if increment > 5 and elapsed_time + increment < metadata.duration:
                 elapsed_time += increment
-            progress = elapsed_time * 100 / self.now_playing_metadata.duration
+            progress = elapsed_time * 100 / metadata.duration
             if self.current_player in self.app_handlers:
                 handler = self.app_handlers[self.current_player]
                 if handler is not None:
                     try:
                         # noinspection PyArgumentList
-                        handler(operation, progress)
+                        handler(operation_to_call, progress)
                     except ConnectionError:
                         pass
                 if done is not None:
@@ -212,9 +225,18 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
         known = self.itunes_titles.get(contentIdentifier)
         if known:
             return known['season'], known['episode']
-        result = json.loads(urlopen('https://itunes.apple.com/lookup?country=de&id=' + contentIdentifier).read()
-                            .decode('utf-8'))
-        if result['resultCount'] == 0:
+        try:
+            result = json.loads(
+                urlopen('https://itunes.apple.com/lookup?country=de&id=' + contentIdentifier).read())
+        except HTTPError:
+            result = None
+        if result is None or result['resultCount'] == 0:
+            try:
+                result = json.loads(
+                    urlopen('https://itunes.apple.com/lookup?country=de&itunesId=' + contentIdentifier).read())
+            except HTTPError:
+                result = None
+        if result is None or result['resultCount'] == 0:
             result = self.get_apple_tv_plus_info(self.get_title())
             if not result:
                 return None
@@ -253,7 +275,7 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
 
     def search_by_description(self, query):
         if not self.now_playing_description:
-            self.request_now_playing_description()
+            asyncio.run(self.request_now_playing_description())
 
         query += ' "' + self.now_playing_description + '"'
         try:
@@ -345,14 +367,17 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
         self.amazon_titles[contentIdentifier] = {'title': title, 'season': season, 'episode': episode}
         return title, season, episode
 
-    def request_now_playing_description(self):
+    async def request_now_playing_description(self):
         msg = create(ProtocolMessage.PLAYBACK_QUEUE_REQUEST_MESSAGE)
         req = msg.inner()
         req.location = 0
         req.length = 1
         req.includeInfo = True
-        resp = asyncio.run(self.protocol.send_and_receive(msg))
-        self.now_playing_description = resp.inner().playbackQueue.contentItems[0].info
+        req.includeMetadata = True
+        resp = await self.protocol.send_and_receive(msg)
+        items = resp.inner().playbackQueue.contentItems
+        if len(items) > 0:
+            self.now_playing_description = items[0].info
 
     @staticmethod
     def on_trakt_token_refreshed(response):
