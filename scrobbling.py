@@ -237,7 +237,7 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
             except HTTPError:
                 result = None
         if result is None or result['resultCount'] == 0:
-            result = self.get_apple_tv_plus_info(self.get_title())
+            result = self.get_apple_tv_plus_info(contentIdentifier)
             if not result:
                 return None
             season, episode = result
@@ -298,41 +298,12 @@ class ScrobblingRemoteProtocol(MediaRemoteProtocol):
         title = self.get_netflix_title(contentIdentifier)
         return title
 
-    def get_apple_tv_plus_info(self, title):
-        data = self.search_by_description("site:tv.apple.com " + title)
-
-        if not data:
-            return None
-
-        match = re.search('(https://tv\\.apple\\.com/(../)?episode/.*?)\"', data)
+    @staticmethod
+    def get_apple_tv_plus_info(contentIdentifier):
+        match = re.match('A\\d{5}(\\d{2})(\\d{3})', contentIdentifier)
         if not match:
             return None
-
-        try:
-            data = urlopen(match.group(1)).read()
-        except HTTPError:
-            return None
-
-        xml = etree.parse(BytesIO(data), etree.HTMLParser())
-        for script in xml.xpath('//script'):
-            if not script.text:
-                continue
-            try:
-                for d in list(json.loads(script.text).values()):
-                    if type(d) is not str:
-                        continue
-                    try:
-                        d = json.loads(d)
-                        if 'd' in d and 'data' in d['d'] and 'content' in d['d']['data']:
-                            info = d['d']['data']['content']
-                            if 'seasonNumber' in info:
-                                return info['seasonNumber'], info['episodeNumber']
-                    except JSONDecodeError:
-                        continue
-            except JSONDecodeError:
-                continue
-
-        return None
+        return int(match.group(1)), int(match.group(2))
 
     @staticmethod
     def get_netflix_title(contentIdentifier):
